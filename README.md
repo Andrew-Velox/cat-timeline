@@ -5,11 +5,12 @@ across a small borderless window: one dot per day, a Cairo-drawn cat running in
 place on **today**, and little dashes above each dot for the tasks due that day.
 Hover a dot for a tooltip, click it to manage that day's tasks.
 
-Everything is drawn with **Cairo paths** — there are no image assets. The cat,
-the line glow, the dots, the task dashes and the hover tooltip are all rendered
-into a single `GtkDrawingArea`.
+The timeline, line glow, dots, task dashes and hover tooltip are all drawn with
+**Cairo** into a single `GtkDrawingArea`. The running cat uses the iconic
+**RunCat** runner (5 sprite frames), embedded in the binary and tinted to match
+the theme — see [Credits](#credits).
 
-![cat-timeline](docs/preview.png)
+![cat-timeline](docs/image.png)
 
 ---
 
@@ -20,8 +21,8 @@ into a single `GtkDrawingArea`.
 - Spawns in the bottom-right corner of the primary monitor.
 - Horizontal timeline with a soft purple glow that fades out toward the edges.
 - A handful of day dots (1 past, today, 3 future), today's dot at 25% from the left.
-- An 8-frame Cairo cat animation (legs, body bob, tail) on today's dot, with a
-  fading paw-print trail.
+- The RunCat runner (5 sprite frames), tinted and animated on today's dot, with
+  a fading paw-print trail.
 - Per-day task dashes above each dot (max 8, then a `+N` overflow badge), colour
   coded by state (pending / today / past / done).
 - Hover tooltip drawn on the canvas (date, `+Nd` offset, task list, hint).
@@ -154,8 +155,14 @@ cat-timeline/
 │   └── input.c/h     mouse events, drag, context menu, task popover
 └── assets/
     ├── cJSON.h
-    └── cJSON.c       bundled single-file JSON library (MIT)
+    ├── cJSON.c          bundled single-file JSON library (MIT)
+    ├── runcat_frames.h  RunCat sprite frames embedded as byte arrays
+    └── runcat/          original PNG frames + LICENSE (Apache-2.0)
 ```
+
+The sprite frames are decoded once at startup with gdk-pixbuf and painted via
+their alpha channel as a mask, so the cat is recoloured to the widget theme
+(`#f0e0ff`).
 
 ---
 
@@ -173,7 +180,16 @@ A single drawing area, a single timer, no extra threads.
 
 ---
 
+## Credits
+
+The running cat sprites are from **RunCat** by **Takuto Nakamura (Kyome22)**:
+<https://github.com/Kyome22/RunCat365> — `resources/runners/cat/`. They are
+licensed under the **Apache License 2.0**; the full license text is kept at
+[`assets/runcat/LICENSE`](assets/runcat/LICENSE). The frames are embedded in
+this project unmodified (re-tinted at render time only).
+
 ## License
 
-`assets/cJSON.{c,h}` are © Dave Gamble and cJSON contributors (MIT). The rest of
-this project is provided as-is.
+- `assets/cJSON.{c,h}` — © Dave Gamble and cJSON contributors (MIT).
+- `assets/runcat/*.png` — © 2025 Takuto Nakamura (Apache-2.0, see above).
+- The rest of this project is provided as-is.
