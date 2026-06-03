@@ -16,11 +16,11 @@ static char *settings_path(void) {
 
 /* Built-in default palette. */
 void settings_defaults(Settings *s) {
-    s->accent = 0xcc77ff;
-    s->cat    = 0xf0e0ff;
-    s->task   = 0xff55aa;
-    s->future = 0x3d2f9e;
-    s->done   = 0x6a5a9a;
+    s->accent = 0xead61c;
+    s->cat    = 0x1c71d8;
+    s->task   = 0xff0000;
+    s->future = 0xffffff;
+    s->done   = 0x089000;
     s->past   = 0x1d1638;
 }
 

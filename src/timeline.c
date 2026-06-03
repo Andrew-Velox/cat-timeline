@@ -188,7 +188,7 @@ static void draw_dot(App *app, cairo_t *cr, int offset) {
         cairo_set_font_size(cr, 9);
         cairo_text_extents_t ext;
         cairo_text_extents(cr, label, &ext);
-        set_hex(cr, offset == 0 ? app->settings.accent : 0x6a5a9a, offset == 0 ? 1.0 : 0.8);
+        set_hex(cr, offset == 0 ? app->settings.accent : 0xffffff, offset == 0 ? 1.0 : 0.8);
         cairo_move_to(cr, cx - ext.width / 2.0, LINE_Y + 16);
         cairo_show_text(cr, label);
     }
