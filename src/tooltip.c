@@ -4,8 +4,8 @@
 #include <string.h>
 
 #define TIP_W       212.0
-#define TIP_BG      0x090717
-#define TIP_BORDER  0x3a2a68
+#define TIP_BG      0xE6E6E7
+#define TIP_BORDER  0xA1A1A1
 #define TIP_MAXROWS 6           /* max task rows before a "+N more" line */
 
 /* Append a rounded-rectangle sub-path to the current path. */
@@ -59,7 +59,7 @@ void tooltip_draw(App *app, cairo_t *cr) {
         g_strlcpy(header, "today", sizeof(header));
     else
         date_label_long(off, header, sizeof(header));
-    set_hex(cr, 0xe8def8, 1.0);
+    set_hex(cr, 0x000000, 1.0);
     cairo_move_to(cr, tx, ty);
     cairo_show_text(cr, header);
 
@@ -68,7 +68,7 @@ void tooltip_draw(App *app, cairo_t *cr) {
         snprintf(badge, sizeof(badge), "%+dd", off);
         cairo_text_extents_t ext;
         cairo_text_extents(cr, badge, &ext);
-        set_hex(cr, 0x9a7aff, 1.0);
+        set_hex(cr, 0x000000, 1.0);
         cairo_move_to(cr, x + TIP_W - pad - ext.width, ty);
         cairo_show_text(cr, badge);
     }
@@ -78,7 +78,7 @@ void tooltip_draw(App *app, cairo_t *cr) {
     cairo_set_font_size(cr, 10);
 
     if (ntasks == 0) {
-        set_hex(cr, 0x6a5a9a, 0.9);
+        set_hex(cr, 0x000000, 1.0);
         cairo_move_to(cr, tx, ty);
         cairo_show_text(cr, "no tasks");
         ty += line_h;
@@ -89,9 +89,9 @@ void tooltip_draw(App *app, cairo_t *cr) {
             /* › marks a pending task, ✓ marks a done one. */
             snprintf(row, sizeof(row), "%s %.72s", t->done ? "✓" : "›", t->text);
             if (t->done)
-                set_hex(cr, 0x5a4a7a, 0.85);
+                set_hex(cr, 0x000000, 0.85);
             else
-                set_hex(cr, 0xd8c8f0, 1.0);
+                set_hex(cr, 0x000000, 1.0);
             cairo_move_to(cr, tx, ty);
             cairo_show_text(cr, row);
             ty += line_h;
@@ -99,7 +99,7 @@ void tooltip_draw(App *app, cairo_t *cr) {
         if (ntasks > TIP_MAXROWS) {
             char more[24];
             snprintf(more, sizeof(more), "+%d more", ntasks - TIP_MAXROWS);
-            set_hex(cr, 0x6a5a9a, 0.9);
+            set_hex(cr, 0x000000, 1.0);
             cairo_move_to(cr, tx, ty);
             cairo_show_text(cr, more);
             ty += line_h;
@@ -107,7 +107,7 @@ void tooltip_draw(App *app, cairo_t *cr) {
     }
 
     /* Hint line. */
-    set_hex(cr, 0x4a3a6a, 0.95);
+    set_hex(cr, 0x000000, 1.0);
     cairo_move_to(cr, tx, ty);
     cairo_show_text(cr, "click to manage");
 }
