@@ -1,76 +1,9 @@
 #include "input.h"
 #include "timeline.h"
 #include "settings_window.h"
+#include "style.h"
 #include <gdk/gdkkeysyms.h>
 #include <math.h>
-
-/* ---- task panel styling ------------------------------------------------ */
-
-/* Format a 0xRRGGBB value as a "#rrggbb" CSS string into buf (>= 8 bytes). */
-static char *css_hex(unsigned int c, char *buf) {
-    g_snprintf(buf, 8, "#%06x", c & 0xFFFFFF);
-    return buf;
-}
-
-/* Install (once) a screen-wide CSS provider that styles the click-to-edit
- * task panel to match the timeline's look. Colours follow the user's palette,
- * so the data is reloaded each time in case the settings changed. */
-static void ensure_panel_css(App *app) {
-    static GtkCssProvider *prov = NULL;
-
-    char accent[8], badge[8], hover[8], done[8];
-    css_hex(app->settings.accent, accent);
-    css_hex(hex_lighten(app->settings.accent, 0.62), badge);
-    css_hex(hex_lighten(app->settings.accent, 0.22), hover);
-    css_hex(app->settings.done, done);
-
-    char css[2600];
-    g_snprintf(css, sizeof(css),
-        ".taskpanel { background-color:#fbfbfd; border:1px solid #d3d3db;"
-        "  border-radius:12px; }"
-        ".tp-box { padding:14px; }"
-        ".tp-title { color:#1b1b1f; font-weight:bold; font-size:13px; }"
-        ".tp-badge { background-color:%s; color:#2a2730; border-radius:7px;"
-        "  padding:1px 8px; font-size:9px; font-weight:bold; }"
-        ".tp-close { background:none; border:none; box-shadow:none; outline:none;"
-        "  min-height:0; min-width:0; padding:0 2px; color:#9aa0a6; }"
-        ".tp-close:hover { color:#e05555; }"
-        ".tp-foot { color:#868c95; font-size:9px; }"
-        ".tp-empty { color:#868c95; font-style:italic; padding:8px 2px; }"
-        ".tp-task { background-image:none; background-color:transparent;"
-        "  border:none; box-shadow:none; outline:none; min-height:0;"
-        "  padding:3px 6px; color:#2a2a30; }"
-        ".tp-task:hover { background-color:rgba(0,0,0,0.06); border-radius:7px; }"
-        ".tp-del { background-image:none; background-color:transparent;"
-        "  border:none; box-shadow:none; outline:none; min-height:0;"
-        "  padding:2px 7px; color:#aeb4bd; }"
-        ".tp-del:hover { color:#e05555; background-color:rgba(224,85,85,0.14);"
-        "  border-radius:7px; }"
-        ".tp-prog trough { min-height:6px; border-radius:3px;"
-        "  background-color:#e6e6ee; border:none; }"
-        ".tp-prog progress { min-height:6px; border-radius:3px; background-color:%s; }"
-        ".tp-entry { border-radius:8px; padding:5px 8px; background-color:#ffffff;"
-        "  color:#2a2a30; border:1px solid #d8d8e0; box-shadow:none; }"
-        ".tp-entry:focus { border-color:%s; }"
-        ".tp-add { background-image:none; background-color:%s; color:#2a2730;"
-        "  font-weight:bold; border-radius:8px; padding:5px 14px;"
-        "  border:none; box-shadow:none; }"
-        ".tp-add:hover { background-color:%s; }",
-        badge, done, accent, accent, hover);
-
-    if (!prov) {
-        prov = gtk_css_provider_new();
-        gtk_style_context_add_provider_for_screen(
-            gdk_screen_get_default(), GTK_STYLE_PROVIDER(prov),
-            GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    }
-    gtk_css_provider_load_from_data(prov, css, -1, NULL);
-}
-
-/* Shorthand: add a CSS class to a widget's style context. */
-static void add_class(GtkWidget *w, const char *cls) {
-    gtk_style_context_add_class(gtk_widget_get_style_context(w), cls);
-}
 
 /* ---- hit testing ------------------------------------------------------- */
 
@@ -160,13 +93,13 @@ static void popover_refresh(App *app) {
     gtk_label_set_text(GTK_LABEL(foot), tally);
 
     char task_hex[8], done_hex[8];
-    css_hex(app->settings.task, task_hex);
-    css_hex(app->settings.done, done_hex);
+    style_hex(app->settings.task, task_hex);
+    style_hex(app->settings.done, done_hex);
 
     if (ntasks == 0) {
         GtkWidget *empty = gtk_label_new("No tasks — add one below.");
         gtk_widget_set_halign(empty, GTK_ALIGN_START);
-        add_class(empty, "tp-empty");
+        style_class(empty, "tp-empty");
         gtk_box_pack_start(GTK_BOX(rows), empty, FALSE, FALSE, 0);
     } else {
         for (int i = 0; i < ntasks; i++) {
@@ -195,14 +128,14 @@ static void popover_refresh(App *app) {
             gtk_label_set_xalign(GTK_LABEL(lbl), 0.0);
             gtk_label_set_ellipsize(GTK_LABEL(lbl), PANGO_ELLIPSIZE_END);
             gtk_button_set_relief(GTK_BUTTON(toggle), GTK_RELIEF_NONE);
-            add_class(toggle, "tp-task");
+            style_class(toggle, "tp-task");
             gtk_widget_set_hexpand(toggle, TRUE);
             g_object_set_data_full(G_OBJECT(toggle), "task-id", g_strdup(t->id), g_free);
             g_signal_connect(toggle, "clicked", G_CALLBACK(on_task_toggle), app);
 
             GtkWidget *del = gtk_button_new_with_label("\xE2\x9C\x95");
             gtk_button_set_relief(GTK_BUTTON(del), GTK_RELIEF_NONE);
-            add_class(del, "tp-del");
+            style_class(del, "tp-del");
             g_object_set_data_full(G_OBJECT(del), "task-id", g_strdup(t->id), g_free);
             g_signal_connect(del, "clicked", G_CALLBACK(on_task_delete), app);
 
@@ -274,7 +207,7 @@ static void open_popover(App *app, int off) {
     if (app->popover)
         gtk_widget_destroy(app->popover);
 
-    ensure_panel_css(app);
+    style_ensure(app);
     app->popover_offset = off;
 
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -288,8 +221,8 @@ static void open_popover(App *app, int off) {
     gtk_window_set_transient_for(GTK_WINDOW(win), GTK_WINDOW(app->window));
 
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    add_class(box, "taskpanel");
-    add_class(box, "tp-box");
+    style_class(box, "taskpanel");
+    style_class(box, "tp-box");
     gtk_widget_set_size_request(box, 252, -1);
     gtk_container_add(GTK_CONTAINER(win), box);
 
@@ -301,7 +234,7 @@ static void open_popover(App *app, int off) {
     else
         date_label_long(off, header, sizeof(header));
     GtkWidget *title = gtk_label_new(header);
-    add_class(title, "tp-title");
+    style_class(title, "tp-title");
     gtk_widget_set_halign(title, GTK_ALIGN_START);
 
     char badge_txt[12];
@@ -310,11 +243,11 @@ static void open_popover(App *app, int off) {
     else
         g_snprintf(badge_txt, sizeof(badge_txt), "%+dd", off);
     GtkWidget *badge = gtk_label_new(badge_txt);
-    add_class(badge, "tp-badge");
+    style_class(badge, "tp-badge");
     gtk_widget_set_valign(badge, GTK_ALIGN_CENTER);
 
     GtkWidget *close = gtk_button_new_with_label("\xE2\x9C\x95");
-    add_class(close, "tp-close");
+    style_class(close, "tp-close");
     gtk_widget_set_valign(close, GTK_ALIGN_CENTER);
     g_signal_connect(close, "clicked", G_CALLBACK(on_editor_close), app);
 
@@ -325,7 +258,7 @@ static void open_popover(App *app, int off) {
 
     /* Slim completion bar. */
     GtkWidget *prog = gtk_progress_bar_new();
-    add_class(prog, "tp-prog");
+    style_class(prog, "tp-prog");
     gtk_widget_set_no_show_all(prog, TRUE);  /* visibility set in refresh */
     gtk_box_pack_start(GTK_BOX(box), prog, FALSE, FALSE, 0);
 
@@ -342,19 +275,19 @@ static void open_popover(App *app, int off) {
 
     /* Footer tally. */
     GtkWidget *foot = gtk_label_new("");
-    add_class(foot, "tp-foot");
+    style_class(foot, "tp-foot");
     gtk_widget_set_halign(foot, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(box), foot, FALSE, FALSE, 0);
 
     /* Entry + Add button row. */
     GtkWidget *addrow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     GtkWidget *entry = gtk_entry_new();
-    add_class(entry, "tp-entry");
+    style_class(entry, "tp-entry");
     gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "New task…");
     gtk_widget_set_hexpand(entry, TRUE);
     g_signal_connect(entry, "activate", G_CALLBACK(on_task_add), app);
     GtkWidget *add = gtk_button_new_with_label("Add");
-    add_class(add, "tp-add");
+    style_class(add, "tp-add");
     g_signal_connect(add, "clicked", G_CALLBACK(on_task_add), app);
     gtk_box_pack_start(GTK_BOX(addrow), entry, TRUE, TRUE, 0);
     gtk_box_pack_end(GTK_BOX(addrow), add, FALSE, FALSE, 0);

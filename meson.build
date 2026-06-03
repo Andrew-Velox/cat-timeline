@@ -16,6 +16,7 @@ sources = [
   'src/timeline.c',
   'src/cat.c',
   'src/tasks.c',
+  'src/style.c',
   'src/input.c',
   'src/settings.c',
   'src/settings_window.c',

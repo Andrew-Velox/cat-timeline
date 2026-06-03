@@ -1,7 +1,9 @@
 #include "settings_window.h"
 #include "settings.h"
 #include "tasks.h"
+#include "style.h"
 
+#include <gdk/gdkkeysyms.h>
 #include <stdio.h>
 
 /* Per-window state shared between the calendar and task-list callbacks. */
@@ -111,27 +113,50 @@ static void refresh_task_list(Ctx *ctx) {
         gtk_widget_destroy(GTK_WIDGET(l->data));
     g_list_free(children);
 
+    char task_hex[8], done_hex[8];
+    style_hex(ctx->app->settings.task, task_hex);
+    style_hex(ctx->app->settings.done, done_hex);
+
     DayTasks *d = tasks_find_day(&ctx->app->store, date);
     if (!d || d->count == 0) {
         GtkWidget *empty = gtk_label_new("No tasks for this day.");
         gtk_widget_set_halign(empty, GTK_ALIGN_START);
+        style_class(empty, "tp-empty");
         gtk_box_pack_start(GTK_BOX(ctx->list), empty, FALSE, FALSE, 2);
     } else {
         for (int i = 0; i < d->count; i++) {
             Task *t = &d->tasks[i];
             GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
 
-            char label[160];
-            snprintf(label, sizeof(label), "%s %.140s", t->done ? "✓" : "○", t->text);
-            GtkWidget *toggle = gtk_button_new_with_label(label);
+            /* Colour-coded ○/✓ glyph + task text (dimmed/struck when done). */
+            char *esc = g_markup_escape_text(t->text, -1);
+            char markup[640];
+            if (t->done)
+                g_snprintf(markup, sizeof(markup),
+                    "<span foreground='%s' size='large'>\xE2\x9C\x93</span>  "
+                    "<span foreground='#9aa0a6' strikethrough='true'>%s</span>",
+                    done_hex, esc);
+            else
+                g_snprintf(markup, sizeof(markup),
+                    "<span foreground='%s' size='large'>\xE2\x97\x8B</span>  "
+                    "<span foreground='#2a2a30'>%s</span>",
+                    task_hex, esc);
+            g_free(esc);
+
+            GtkWidget *toggle = gtk_button_new_with_label("");
+            GtkWidget *lbl = gtk_bin_get_child(GTK_BIN(toggle));
+            gtk_label_set_markup(GTK_LABEL(lbl), markup);
+            gtk_label_set_xalign(GTK_LABEL(lbl), 0.0);
+            gtk_label_set_ellipsize(GTK_LABEL(lbl), PANGO_ELLIPSIZE_END);
             gtk_button_set_relief(GTK_BUTTON(toggle), GTK_RELIEF_NONE);
-            gtk_widget_set_halign(gtk_bin_get_child(GTK_BIN(toggle)), GTK_ALIGN_START);
+            style_class(toggle, "tp-task");
             gtk_widget_set_hexpand(toggle, TRUE);
             g_object_set_data_full(G_OBJECT(toggle), "task-id", g_strdup(t->id), g_free);
             g_signal_connect(toggle, "clicked", G_CALLBACK(on_toggle), ctx);
 
-            GtkWidget *del = gtk_button_new_with_label("✕");
+            GtkWidget *del = gtk_button_new_with_label("\xE2\x9C\x95");
             gtk_button_set_relief(GTK_BUTTON(del), GTK_RELIEF_NONE);
+            style_class(del, "tp-del");
             g_object_set_data_full(G_OBJECT(del), "task-id", g_strdup(t->id), g_free);
             g_signal_connect(del, "clicked", G_CALLBACK(on_delete), ctx);
 
@@ -204,6 +229,24 @@ static void on_destroy(GtkWidget *w, gpointer ud) {
     app->settings_win = NULL;          /* Ctx is freed via set_data_full */
 }
 
+/* Close button dismisses the window. */
+static void on_close_clicked(GtkWidget *w, gpointer ud) {
+    (void)w;
+    App *app = ud;
+    if (app->settings_win)
+        gtk_widget_destroy(app->settings_win);
+}
+
+/* Escape closes the window. */
+static gboolean on_key_press(GtkWidget *w, GdkEventKey *e, gpointer ud) {
+    (void)ud;
+    if (e->keyval == GDK_KEY_Escape) {
+        gtk_widget_destroy(w);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 /* Park the panel just above the widget in the monitor's bottom-right corner. */
 static void place_near_widget(GtkWidget *win) {
     GdkDisplay *display = gdk_display_get_default();
@@ -232,11 +275,14 @@ void settings_window_open(App *app) {
         return;
     }
 
+    style_ensure(app);
+
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     app->settings_win = win;
     gtk_window_set_title(GTK_WINDOW(win), "cat-timeline — Settings");
     /* Compact floating panel that hovers above other apps. The dialog/utility
      * hints + non-resizable keep tiling compositors (Hyprland) from tiling it. */
+    gtk_window_set_decorated(GTK_WINDOW(win), FALSE);   /* own header instead */
     gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
     gtk_window_set_keep_above(GTK_WINDOW(win), TRUE);
     gtk_window_set_skip_taskbar_hint(GTK_WINDOW(win), TRUE);
@@ -244,14 +290,30 @@ void settings_window_open(App *app) {
     gtk_window_set_type_hint(GTK_WINDOW(win), GDK_WINDOW_TYPE_HINT_UTILITY);
     gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_NONE);
     gtk_window_set_default_size(GTK_WINDOW(win), 320, 360);
+    g_signal_connect(win, "key-press-event", G_CALLBACK(on_key_press), NULL);
 
     Ctx *ctx = g_new0(Ctx, 1);
     ctx->app = app;
     g_object_set_data_full(G_OBJECT(win), "ctx", ctx, g_free);
 
-    GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    gtk_container_set_border_width(GTK_CONTAINER(root), 8);
+    GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    style_class(root, "settings");
+    style_class(root, "taskpanel");
+    style_class(root, "tp-box");
     gtk_container_add(GTK_CONTAINER(win), root);
+
+    /* Header: title (left) + × close (right). */
+    GtkWidget *head = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *htitle = gtk_label_new("Settings");
+    style_class(htitle, "tp-title");
+    gtk_widget_set_halign(htitle, GTK_ALIGN_START);
+    GtkWidget *hclose = gtk_button_new_with_label("\xE2\x9C\x95");
+    style_class(hclose, "tp-close");
+    gtk_widget_set_valign(hclose, GTK_ALIGN_CENTER);
+    g_signal_connect(hclose, "clicked", G_CALLBACK(on_close_clicked), app);
+    gtk_box_pack_start(GTK_BOX(head), htitle, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(head), hclose, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(root), head, FALSE, FALSE, 0);
 
     GtkWidget *tabs = gtk_notebook_new();
     gtk_box_pack_start(GTK_BOX(root), tabs, TRUE, TRUE, 0);
@@ -271,6 +333,7 @@ void settings_window_open(App *app) {
 
     /* --- Selected-day tasks --- */
     ctx->day_label = gtk_label_new("");
+    style_class(ctx->day_label, "tp-sub");
     gtk_widget_set_halign(ctx->day_label, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(page_tasks), ctx->day_label, FALSE, FALSE, 0);
 
@@ -286,10 +349,12 @@ void settings_window_open(App *app) {
 
     GtkWidget *addrow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
     ctx->entry = gtk_entry_new();
+    style_class(ctx->entry, "tp-entry");
     gtk_entry_set_placeholder_text(GTK_ENTRY(ctx->entry), "New task for this day…");
     gtk_widget_set_hexpand(ctx->entry, TRUE);
     g_signal_connect(ctx->entry, "activate", G_CALLBACK(on_add), ctx);
     GtkWidget *add = gtk_button_new_with_label("Add");
+    style_class(add, "tp-add");
     g_signal_connect(add, "clicked", G_CALLBACK(on_add), ctx);
     gtk_box_pack_start(GTK_BOX(addrow), ctx->entry, TRUE, TRUE, 0);
     gtk_box_pack_end(GTK_BOX(addrow), add, FALSE, FALSE, 0);
@@ -311,6 +376,7 @@ void settings_window_open(App *app) {
     ctx->ncolors = 6;
 
     GtkWidget *reset = gtk_button_new_with_label("Reset to defaults");
+    style_class(reset, "tp-reset");
     g_signal_connect(reset, "clicked", G_CALLBACK(on_reset), ctx);
     gtk_box_pack_end(GTK_BOX(root), reset, FALSE, FALSE, 4);
 
