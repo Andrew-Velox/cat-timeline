@@ -212,6 +212,7 @@ static void open_popover(App *app, int off) {
 
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     app->popover = win;
+    gtk_window_set_title(GTK_WINDOW(win), "cat-timeline tasks");  /* distinct from main widget */
     gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
     gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
     gtk_window_set_keep_above(GTK_WINDOW(win), TRUE);
