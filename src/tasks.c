@@ -3,6 +3,7 @@
 
 #include <glib.h>
 #include <glib/gstdio.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,6 +44,24 @@ static struct tm tm_for_offset(int offset) {
     t.tm_mday += offset;   /* mktime normalises month/year/DST roll-over */
     mktime(&t);
     return t;
+}
+
+/* Fraction (0..1) of the local day elapsed (00:00 -> 0, next midnight -> 1).
+ * If CAT_TIMELINE_DEMO is set, a "day" lasts that many seconds instead, so
+ * the scroll is fast enough to watch (useful for testing the effect). */
+double day_fraction(void) {
+    const char *demo = g_getenv("CAT_TIMELINE_DEMO");
+    if (demo && *demo) {
+        double span = g_strtod(demo, NULL);          /* seconds per fake day */
+        if (span < 1.0)
+            span = 1.0;
+        double t = g_get_monotonic_time() / 1000000.0;
+        return fmod(t / span, 1.0);
+    }
+    time_t now = time(NULL);
+    struct tm t = *localtime(&now);
+    double secs = t.tm_hour * 3600.0 + t.tm_min * 60.0 + t.tm_sec;
+    return secs / 86400.0;
 }
 
 /* Fill out11 with "YYYY-MM-DD" for today + offset days. */

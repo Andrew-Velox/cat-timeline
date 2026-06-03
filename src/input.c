@@ -7,7 +7,7 @@
 /* Return TRUE and the day offset when (x,y) falls within a dot's hover zone. */
 static gboolean hit_dot(double x, double y, int *out_off) {
     int off = nearest_offset(x);
-    if (off < -PAST_DAYS || off > FUTURE_DAYS)
+    if (off < -PAST_DAYS - 1 || off > FUTURE_DAYS + 1)
         return FALSE;
     if (fabs(x - dot_x(off)) <= DOT_SPACING / 2.0 && fabs(y - LINE_Y) <= HOVER_VPAD) {
         *out_off = off;

@@ -52,6 +52,11 @@ void tasks_delete(TaskStore *s, const char *date, const char *id);
 /* Number of tasks stored for a given date (0 if none). */
 int tasks_count_for_day(TaskStore *s, const char *date);
 
+/* Fraction (0..1) of the current local day elapsed; drives the timeline
+ * scroll so dots flow toward the cat as the day runs out. Honours the
+ * CAT_TIMELINE_DEMO env var (seconds per simulated day) for a fast preview. */
+double day_fraction(void);
+
 /* Fill out11 with the "YYYY-MM-DD" date that is `offset` days from today. */
 void date_for_offset(int offset, char *out11);
 /* Fill out with a short label like "Jun 14" for today+offset. */

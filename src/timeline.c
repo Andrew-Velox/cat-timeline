@@ -13,14 +13,16 @@
 #define COL_DOT_FUTURE    0x3d2f9e
 #define COL_DOT_HOVER     0xee99ff
 
-/* Screen x-coordinate of the dot for a given day offset. */
+/* Screen x of a day's dot. The strip scrolls left as the day elapses, so the
+ * dot sits on the cat (TODAY_X) at that day's midnight and drifts off by one
+ * full slot over 24h — tomorrow's dot reaching the cat as today ends. */
 double dot_x(int offset) {
-    return TODAY_X + offset * DOT_SPACING;
+    return TODAY_X + (offset - day_fraction()) * DOT_SPACING;
 }
 
-/* Day offset whose dot is horizontally closest to screen x. */
+/* Day offset whose (scrolled) dot is horizontally closest to screen x. */
 int nearest_offset(double x) {
-    return (int)lround((x - TODAY_X) / DOT_SPACING);
+    return (int)lround((x - TODAY_X) / DOT_SPACING + day_fraction());
 }
 
 /* Draw the soft purple horizontal line with a glow and edges that fade out. */
@@ -201,7 +203,8 @@ void timeline_draw(App *app, cairo_t *cr) {
     draw_line(cr);
     draw_pulse(app, cr);
 
-    for (int off = -PAST_DAYS; off <= FUTURE_DAYS; off++) {
+    /* One extra day each side so dots scroll in/out instead of popping. */
+    for (int off = -PAST_DAYS - 1; off <= FUTURE_DAYS + 1; off++) {
         double cx = dot_x(off);
         if (cx < -DOT_SPACING || cx > WIN_W + DOT_SPACING)
             continue;
