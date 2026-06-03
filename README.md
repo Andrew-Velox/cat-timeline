@@ -3,12 +3,12 @@
 A lightweight desktop todo widget for Linux. A glowing purple timeline runs
 across a small borderless window: one dot per day, a Cairo-drawn cat running in
 place on **today**, and little dashes above each dot for the tasks due that day.
-Hover a dot for a tooltip, click it to manage that day's tasks.
+Hover a dot to highlight it; click it to open a small panel for that day's tasks.
 
-The timeline, line glow, dots, task dashes and hover tooltip are all drawn with
-**Cairo** into a single `GtkDrawingArea`. The running cat uses the iconic
-**RunCat** runner (5 sprite frames), embedded in the binary and tinted to match
-the theme — see [Credits](#credits).
+The timeline, line glow, dots and task dashes are all drawn with **Cairo** into a
+single `GtkDrawingArea`. The running cat uses the iconic **RunCat** runner
+(5 sprite frames), embedded in the binary and tinted to match the theme — see
+[Credits](#credits).
 
 ![cat-timeline](docs/image.png)
 
@@ -25,12 +25,14 @@ the theme — see [Credits](#credits).
   a fading paw-print trail.
 - Per-day task dashes above each dot (max 8, then a `+N` overflow badge), colour
   coded by state (pending / today / past / done).
-- Hover tooltip drawn on the canvas (date, `+Nd` offset, task list, hint).
-- Click a dot to open a `GtkPopover` for adding, toggling and deleting tasks.
-- **Double-click** empty space to open a **settings window**: a month calendar
-  (days with tasks are marked, and you can add/toggle/delete a day's tasks) and
-  an **Appearance** panel with colour pickers for the timeline, cat, tasks and
-  dots. Changes apply live and are saved.
+- Hover a dot to highlight it (it grows and glows); no popup, so nothing flickers.
+- **Click a dot** to open a styled task panel — a small floating card with the
+  date, a completion bar, and a scrollable list to add, check off and delete that
+  day's tasks. Press `Esc` or the `×` to close.
+- **Double-click** empty space to open a matching **settings window**: a month
+  calendar (days with tasks are marked, and you can add/toggle/delete a day's
+  tasks) and an **Appearance** panel with colour pickers for the timeline, cat,
+  tasks and dots. Changes apply live and are saved. `Esc` / `×` closes it.
 - Right-click anywhere for a **Quit** menu; click-and-drag empty space to move
   the window.
 - The timeline scrolls with the clock: each day's dot sits on the cat at
@@ -75,21 +77,22 @@ sudo dnf install gtk3-devel meson ninja-build gcc
 
 ---
 
-## Build
+## Install
+
+**1. Install the dependencies** for your distro (see the commands above).
+
+**2. Clone, build and run:**
 
 ```sh
+git clone https://github.com/Andrew-Velox/cat-timeline.git
+cd cat-timeline
 meson setup build
-cd build
-ninja
-```
-
-The resulting binary is `build/cat-timeline`. Run it directly:
-
-```sh
+ninja -C build
 ./build/cat-timeline
 ```
 
-Optionally install it system-wide (`/usr/local/bin/cat-timeline` by default):
+**3. (Optional) install it system-wide** so you can launch it as `cat-timeline`
+from anywhere (`/usr/local/bin/cat-timeline` by default):
 
 ```sh
 sudo ninja -C build install
@@ -159,10 +162,10 @@ cat-timeline/
 │   ├── timeline.c/h  line, dots, date labels, task dashes
 │   ├── cat.c/h       Cairo cat animation
 │   ├── tasks.c/h     JSON load/save, task model, date helpers
-│   ├── tooltip.c/h   hover popup rendered on the canvas
+│   ├── style.c/h     shared CSS theme for the task panel + settings window
 │   ├── settings.c/h  colour palette load/save (settings.json)
 │   ├── settings_window.c/h  double-click calendar + appearance window
-│   └── input.c/h     mouse events, drag, context menu, task popover
+│   └── input.c/h     mouse events, drag, context menu, task panel
 └── assets/
     ├── cJSON.h
     ├── cJSON.c          bundled single-file JSON library (MIT)
