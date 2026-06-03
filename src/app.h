@@ -32,6 +32,7 @@ typedef struct {
     TaskStore store;        /* in-memory task database            */
 
     int frame;              /* cat animation frame, 0..7          */
+    unsigned long tick;     /* monotonic timer tick (timeline fx) */
     double mouse_x, mouse_y;/* last pointer position on the area  */
     int hover_offset;       /* day offset under cursor, or none   */
     gboolean has_hover;     /* whether a dot is currently hovered */

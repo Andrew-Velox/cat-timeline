@@ -69,6 +69,7 @@ void cat_draw(App *app, cairo_t *cr) {
 gboolean cat_tick(gpointer user_data) {
     App *app = user_data;
     app->frame = (app->frame + 1) % CAT_FRAMES;
+    app->tick++;                       /* drives the timeline pulse */
     gtk_widget_queue_draw(app->area);
     return G_SOURCE_CONTINUE;
 }

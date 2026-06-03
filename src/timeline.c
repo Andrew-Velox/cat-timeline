@@ -52,6 +52,33 @@ static void draw_line(cairo_t *cr) {
     cairo_pattern_destroy(grad);
 }
 
+/* A soft highlight that flows along the line, looping left -> right.
+ * Driven by app->tick so it advances smoothly on every timer frame. */
+static void draw_pulse(App *app, cairo_t *cr) {
+    const double period = 42.0;                 /* ticks per sweep (~4.2s) */
+    double t = fmod(app->tick / period, 1.0);   /* 0 -> 1 across the line  */
+    double px = t * WIN_W;                       /* highlight centre x      */
+    double env = sin(t * M_PI);                  /* fade in/out at the ends */
+    double alpha = 0.55 * env;
+    if (alpha < 0.01)
+        return;
+
+    const double radius = 48.0;
+    cairo_pattern_t *g = cairo_pattern_create_radial(px, LINE_Y, 0, px, LINE_Y, radius);
+    cairo_pattern_add_color_stop_rgba(g, 0.0, 0.88, 0.74, 1.0, alpha);
+    cairo_pattern_add_color_stop_rgba(g, 1.0, 0.88, 0.74, 1.0, 0.0);
+
+    cairo_save(cr);
+    /* Hug the line: clip to a thin band so the glow stays on the timeline. */
+    cairo_rectangle(cr, 0, LINE_Y - 6.0, WIN_W, 12.0);
+    cairo_clip(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
+    cairo_set_source(cr, g);
+    cairo_paint(cr);
+    cairo_restore(cr);
+    cairo_pattern_destroy(g);
+}
+
 /* Draw the vertical task dashes (one per task) above a dot. */
 static void draw_dashes(cairo_t *cr, DayTasks *d, int offset, double cx) {
     if (!d || d->count == 0)
@@ -172,6 +199,7 @@ static void draw_dot(App *app, cairo_t *cr, int offset) {
 /* Render the whole timeline: line, dots, labels and per-day task dashes. */
 void timeline_draw(App *app, cairo_t *cr) {
     draw_line(cr);
+    draw_pulse(app, cr);
 
     for (int off = -PAST_DAYS; off <= FUTURE_DAYS; off++) {
         double cx = dot_x(off);
