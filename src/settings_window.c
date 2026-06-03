@@ -218,7 +218,7 @@ static void place_near_widget(GtkWidget *win) {
     GtkRequisition req;
     gtk_widget_get_preferred_size(win, NULL, &req);   /* natural size */
 
-    const int margin = 24;
+    const int margin = 12;
     int x = geo.x + geo.width - req.width - margin;
     int y = geo.y + geo.height - WIN_H - margin - req.height - 12;
     if (y < geo.y + margin)
@@ -243,35 +243,46 @@ void settings_window_open(App *app) {
     gtk_window_set_skip_pager_hint(GTK_WINDOW(win), TRUE);
     gtk_window_set_type_hint(GTK_WINDOW(win), GDK_WINDOW_TYPE_HINT_UTILITY);
     gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_NONE);
-    gtk_window_set_default_size(GTK_WINDOW(win), 270, 1);
+    gtk_window_set_default_size(GTK_WINDOW(win), 320, 360);
 
     Ctx *ctx = g_new0(Ctx, 1);
     ctx->app = app;
     g_object_set_data_full(G_OBJECT(win), "ctx", ctx, g_free);
 
-    GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 7);
-    gtk_container_set_border_width(GTK_CONTAINER(root), 10);
+    GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_container_set_border_width(GTK_CONTAINER(root), 8);
     gtk_container_add(GTK_CONTAINER(win), root);
+
+    GtkWidget *tabs = gtk_notebook_new();
+    gtk_box_pack_start(GTK_BOX(root), tabs, TRUE, TRUE, 0);
+
+    GtkWidget *page_tasks = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_container_set_border_width(GTK_CONTAINER(page_tasks), 8);
+    GtkWidget *page_appearance = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_container_set_border_width(GTK_CONTAINER(page_appearance), 8);
+
+    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), page_tasks, gtk_label_new("Tasks"));
+    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), page_appearance, gtk_label_new("Appearance"));
 
     /* --- Calendar --- */
     GtkWidget *cal = gtk_calendar_new();
     ctx->cal = GTK_CALENDAR(cal);
-    gtk_box_pack_start(GTK_BOX(root), cal, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(page_tasks), cal, FALSE, FALSE, 0);
 
     /* --- Selected-day tasks --- */
     ctx->day_label = gtk_label_new("");
     gtk_widget_set_halign(ctx->day_label, GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(root), ctx->day_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(page_tasks), ctx->day_label, FALSE, FALSE, 0);
 
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(scroll), 70);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scroll), 120);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(scroll), 80);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scroll), 140);
     gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(scroll), TRUE);
     ctx->list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     gtk_container_add(GTK_CONTAINER(scroll), ctx->list);
-    gtk_box_pack_start(GTK_BOX(root), scroll, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(page_tasks), scroll, TRUE, TRUE, 0);
 
     GtkWidget *addrow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
     ctx->entry = gtk_entry_new();
@@ -282,21 +293,13 @@ void settings_window_open(App *app) {
     g_signal_connect(add, "clicked", G_CALLBACK(on_add), ctx);
     gtk_box_pack_start(GTK_BOX(addrow), ctx->entry, TRUE, TRUE, 0);
     gtk_box_pack_end(GTK_BOX(addrow), add, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root), addrow, FALSE, FALSE, 0);
-
-    gtk_box_pack_start(GTK_BOX(root), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
-                       FALSE, FALSE, 2);
+    gtk_box_pack_start(GTK_BOX(page_tasks), addrow, FALSE, FALSE, 0);
 
     /* --- Appearance --- */
-    GtkWidget *appear = gtk_label_new(NULL);
-    gtk_label_set_markup(GTK_LABEL(appear), "<b>Appearance</b>");
-    gtk_widget_set_halign(appear, GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(root), appear, FALSE, FALSE, 0);
-
     GtkWidget *grid = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid), 6);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
-    gtk_box_pack_start(GTK_BOX(root), grid, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(page_appearance), grid, FALSE, FALSE, 0);
 
     Settings *s = &app->settings;
     add_color_row(ctx, grid, 0, "Timeline & today", &s->accent);
@@ -309,7 +312,7 @@ void settings_window_open(App *app) {
 
     GtkWidget *reset = gtk_button_new_with_label("Reset to defaults");
     g_signal_connect(reset, "clicked", G_CALLBACK(on_reset), ctx);
-    gtk_box_pack_start(GTK_BOX(root), reset, FALSE, FALSE, 4);
+    gtk_box_pack_end(GTK_BOX(root), reset, FALSE, FALSE, 4);
 
     /* Wire calendar updates and populate the initial day. */
     g_signal_connect(cal, "day-selected", G_CALLBACK(on_calendar_changed), ctx);
