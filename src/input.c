@@ -1,7 +1,76 @@
 #include "input.h"
 #include "timeline.h"
 #include "settings_window.h"
+#include <gdk/gdkkeysyms.h>
 #include <math.h>
+
+/* ---- task panel styling ------------------------------------------------ */
+
+/* Format a 0xRRGGBB value as a "#rrggbb" CSS string into buf (>= 8 bytes). */
+static char *css_hex(unsigned int c, char *buf) {
+    g_snprintf(buf, 8, "#%06x", c & 0xFFFFFF);
+    return buf;
+}
+
+/* Install (once) a screen-wide CSS provider that styles the click-to-edit
+ * task panel to match the timeline's look. Colours follow the user's palette,
+ * so the data is reloaded each time in case the settings changed. */
+static void ensure_panel_css(App *app) {
+    static GtkCssProvider *prov = NULL;
+
+    char accent[8], badge[8], hover[8], done[8];
+    css_hex(app->settings.accent, accent);
+    css_hex(hex_lighten(app->settings.accent, 0.62), badge);
+    css_hex(hex_lighten(app->settings.accent, 0.22), hover);
+    css_hex(app->settings.done, done);
+
+    char css[2600];
+    g_snprintf(css, sizeof(css),
+        ".taskpanel { background-color:#fbfbfd; border:1px solid #d3d3db;"
+        "  border-radius:12px; }"
+        ".tp-box { padding:14px; }"
+        ".tp-title { color:#1b1b1f; font-weight:bold; font-size:13px; }"
+        ".tp-badge { background-color:%s; color:#2a2730; border-radius:7px;"
+        "  padding:1px 8px; font-size:9px; font-weight:bold; }"
+        ".tp-close { background:none; border:none; box-shadow:none; outline:none;"
+        "  min-height:0; min-width:0; padding:0 2px; color:#9aa0a6; }"
+        ".tp-close:hover { color:#e05555; }"
+        ".tp-foot { color:#868c95; font-size:9px; }"
+        ".tp-empty { color:#868c95; font-style:italic; padding:8px 2px; }"
+        ".tp-task { background-image:none; background-color:transparent;"
+        "  border:none; box-shadow:none; outline:none; min-height:0;"
+        "  padding:3px 6px; color:#2a2a30; }"
+        ".tp-task:hover { background-color:rgba(0,0,0,0.06); border-radius:7px; }"
+        ".tp-del { background-image:none; background-color:transparent;"
+        "  border:none; box-shadow:none; outline:none; min-height:0;"
+        "  padding:2px 7px; color:#aeb4bd; }"
+        ".tp-del:hover { color:#e05555; background-color:rgba(224,85,85,0.14);"
+        "  border-radius:7px; }"
+        ".tp-prog trough { min-height:6px; border-radius:3px;"
+        "  background-color:#e6e6ee; border:none; }"
+        ".tp-prog progress { min-height:6px; border-radius:3px; background-color:%s; }"
+        ".tp-entry { border-radius:8px; padding:5px 8px; background-color:#ffffff;"
+        "  color:#2a2a30; border:1px solid #d8d8e0; box-shadow:none; }"
+        ".tp-entry:focus { border-color:%s; }"
+        ".tp-add { background-image:none; background-color:%s; color:#2a2730;"
+        "  font-weight:bold; border-radius:8px; padding:5px 14px;"
+        "  border:none; box-shadow:none; }"
+        ".tp-add:hover { background-color:%s; }",
+        badge, done, accent, accent, hover);
+
+    if (!prov) {
+        prov = gtk_css_provider_new();
+        gtk_style_context_add_provider_for_screen(
+            gdk_screen_get_default(), GTK_STYLE_PROVIDER(prov),
+            GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
+    gtk_css_provider_load_from_data(prov, css, -1, NULL);
+}
+
+/* Shorthand: add a CSS class to a widget's style context. */
+static void add_class(GtkWidget *w, const char *cls) {
+    gtk_style_context_add_class(gtk_widget_get_style_context(w), cls);
+}
 
 /* ---- hit testing ------------------------------------------------------- */
 
@@ -62,6 +131,8 @@ static void on_task_add(GtkWidget *w, gpointer ud) {
 /* Rebuild the task-row list inside the popover from current store data. */
 static void popover_refresh(App *app) {
     GtkWidget *rows = g_object_get_data(G_OBJECT(app->popover), "rows");
+    GtkWidget *prog = g_object_get_data(G_OBJECT(app->popover), "prog");
+    GtkWidget *foot = g_object_get_data(G_OBJECT(app->popover), "foot");
 
     /* Clear existing rows. */
     GList *children = gtk_container_get_children(GTK_CONTAINER(rows));
@@ -72,28 +143,66 @@ static void popover_refresh(App *app) {
     char date[DATE_LEN];
     date_for_offset(app->popover_offset, date);
     DayTasks *d = tasks_find_day(&app->store, date);
+    int ntasks = d ? d->count : 0;
+    int ndone = 0;
+    for (int i = 0; i < ntasks; i++)
+        if (d->tasks[i].done) ndone++;
 
-    if (!d || d->count == 0) {
-        GtkWidget *empty = gtk_label_new("No tasks yet.");
+    /* Progress bar + footer tally reflect the day's completion. */
+    gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(prog),
+                                  ntasks ? (double)ndone / ntasks : 0.0);
+    gtk_widget_set_visible(prog, ntasks > 0);
+    char tally[48];
+    if (ntasks)
+        g_snprintf(tally, sizeof(tally), "%d of %d done", ndone, ntasks);
+    else
+        g_strlcpy(tally, "Nothing planned yet", sizeof(tally));
+    gtk_label_set_text(GTK_LABEL(foot), tally);
+
+    char task_hex[8], done_hex[8];
+    css_hex(app->settings.task, task_hex);
+    css_hex(app->settings.done, done_hex);
+
+    if (ntasks == 0) {
+        GtkWidget *empty = gtk_label_new("No tasks — add one below.");
         gtk_widget_set_halign(empty, GTK_ALIGN_START);
-        gtk_box_pack_start(GTK_BOX(rows), empty, FALSE, FALSE, 2);
+        add_class(empty, "tp-empty");
+        gtk_box_pack_start(GTK_BOX(rows), empty, FALSE, FALSE, 0);
     } else {
-        for (int i = 0; i < d->count; i++) {
+        for (int i = 0; i < ntasks; i++) {
             Task *t = &d->tasks[i];
             GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
 
-            /* The task label doubles as a toggle button (flat styling). */
-            char label[160];
-            snprintf(label, sizeof(label), "%s %.140s", t->done ? "✓" : "○", t->text);
-            GtkWidget *toggle = gtk_button_new_with_label(label);
+            /* Colour-coded status glyph (○ pending / ✓ done) plus the task
+             * text (struck through and dimmed when done), via Pango markup. */
+            char *esc = g_markup_escape_text(t->text, -1);
+            char markup[640];
+            if (t->done)
+                g_snprintf(markup, sizeof(markup),
+                    "<span foreground='%s' size='large'>\xE2\x9C\x93</span>  "
+                    "<span foreground='#9aa0a6' strikethrough='true'>%s</span>",
+                    done_hex, esc);
+            else
+                g_snprintf(markup, sizeof(markup),
+                    "<span foreground='%s' size='large'>\xE2\x97\x8B</span>  "
+                    "<span foreground='#2a2a30'>%s</span>",
+                    task_hex, esc);
+            g_free(esc);
+
+            GtkWidget *toggle = gtk_button_new_with_label("");
+            GtkWidget *lbl = gtk_bin_get_child(GTK_BIN(toggle));
+            gtk_label_set_markup(GTK_LABEL(lbl), markup);
+            gtk_label_set_xalign(GTK_LABEL(lbl), 0.0);
+            gtk_label_set_ellipsize(GTK_LABEL(lbl), PANGO_ELLIPSIZE_END);
             gtk_button_set_relief(GTK_BUTTON(toggle), GTK_RELIEF_NONE);
-            gtk_widget_set_halign(gtk_bin_get_child(GTK_BIN(toggle)), GTK_ALIGN_START);
+            add_class(toggle, "tp-task");
             gtk_widget_set_hexpand(toggle, TRUE);
             g_object_set_data_full(G_OBJECT(toggle), "task-id", g_strdup(t->id), g_free);
             g_signal_connect(toggle, "clicked", G_CALLBACK(on_task_toggle), app);
 
-            GtkWidget *del = gtk_button_new_with_label("✕");
+            GtkWidget *del = gtk_button_new_with_label("\xE2\x9C\x95");
             gtk_button_set_relief(GTK_BUTTON(del), GTK_RELIEF_NONE);
+            add_class(del, "tp-del");
             g_object_set_data_full(G_OBJECT(del), "task-id", g_strdup(t->id), g_free);
             g_signal_connect(del, "clicked", G_CALLBACK(on_task_delete), app);
 
@@ -105,71 +214,163 @@ static void popover_refresh(App *app) {
     gtk_widget_show_all(rows);
 }
 
-/* Forget the popover once it closes so a fresh one is built next time. */
-static void on_popover_closed(GtkWidget *p, gpointer ud) {
+/* Forget the editor window once it is destroyed so a fresh one is built next. */
+static void on_editor_destroy(GtkWidget *w, gpointer ud) {
+    (void)w;
     App *app = ud;
     app->popover = NULL;
-    gtk_widget_destroy(p);
 }
 
-/* Build the popover UI (header, scrollable rows, entry + add) for a day. */
+/* Close button / Escape dismiss the editor. */
+static void on_editor_close(GtkWidget *w, gpointer ud) {
+    (void)w;
+    App *app = ud;
+    if (app->popover)
+        gtk_widget_destroy(app->popover);
+}
+
+static gboolean on_editor_key(GtkWidget *w, GdkEventKey *e, gpointer ud) {
+    (void)w;
+    App *app = ud;
+    if (e->keyval == GDK_KEY_Escape) {
+        if (app->popover)
+            gtk_widget_destroy(app->popover);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* Park the editor just above the timeline widget, centred on the clicked dot.
+ * (On X11 this is exact; native Wayland ignores moves and the compositor
+ * places it — same trade-off as the settings window.) */
+static void place_editor(App *app, GtkWidget *win, int off) {
+    GtkRequisition req;
+    gtk_widget_get_preferred_size(win, NULL, &req);
+
+    int rx = 0, ry = 0;
+    GdkWindow *aw = gtk_widget_get_window(app->area);
+    if (aw)
+        gdk_window_get_origin(aw, &rx, &ry);
+
+    int x = rx + (int)dot_x(off) - req.width / 2;
+    int y = ry - req.height - 10;
+
+    GdkDisplay *display = gdk_display_get_default();
+    GdkMonitor *mon = aw ? gdk_display_get_monitor_at_window(display, aw)
+                         : gdk_display_get_primary_monitor(display);
+    if (mon) {
+        GdkRectangle geo;
+        gdk_monitor_get_geometry(mon, &geo);
+        if (x < geo.x + 8) x = geo.x + 8;
+        if (x + req.width > geo.x + geo.width - 8) x = geo.x + geo.width - req.width - 8;
+        if (y < geo.y + 8) y = geo.y + 8;
+    }
+    gtk_window_move(GTK_WINDOW(win), x, y);
+}
+
+/* Build the day's task editor as a compact top-level panel (reliable input on
+ * Wayland/Hyprland, where GtkPopover grabs misbehave) and pop it up by the dot. */
 static void open_popover(App *app, int off) {
     if (app->popover)
         gtk_widget_destroy(app->popover);
 
+    ensure_panel_css(app);
     app->popover_offset = off;
-    app->popover = gtk_popover_new(app->area);
-    gtk_popover_set_position(GTK_POPOVER(app->popover), GTK_POS_TOP);
-    GdkRectangle rect = { (int)(dot_x(off) - 6), (int)(LINE_Y - 6), 12, 12 };
-    gtk_popover_set_pointing_to(GTK_POPOVER(app->popover), &rect);
 
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    gtk_container_set_border_width(GTK_CONTAINER(box), 10);
-    gtk_widget_set_size_request(box, 240, -1);
+    GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    app->popover = win;
+    gtk_window_set_decorated(GTK_WINDOW(win), FALSE);
+    gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
+    gtk_window_set_keep_above(GTK_WINDOW(win), TRUE);
+    gtk_window_set_skip_taskbar_hint(GTK_WINDOW(win), TRUE);
+    gtk_window_set_skip_pager_hint(GTK_WINDOW(win), TRUE);
+    gtk_window_set_type_hint(GTK_WINDOW(win), GDK_WINDOW_TYPE_HINT_UTILITY);
+    gtk_window_set_transient_for(GTK_WINDOW(win), GTK_WINDOW(app->window));
 
-    /* Header with the day's date. */
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    add_class(box, "taskpanel");
+    add_class(box, "tp-box");
+    gtk_widget_set_size_request(box, 252, -1);
+    gtk_container_add(GTK_CONTAINER(win), box);
+
+    /* Header: date (left), +Nd / TODAY badge and a × close (right). */
+    GtkWidget *head = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     char header[40];
     if (off == 0)
         g_strlcpy(header, "Today", sizeof(header));
     else
         date_label_long(off, header, sizeof(header));
-    GtkWidget *title = gtk_label_new(NULL);
-    char markup[96];
-    snprintf(markup, sizeof(markup), "<b>%s</b>", header);
-    gtk_label_set_markup(GTK_LABEL(title), markup);
+    GtkWidget *title = gtk_label_new(header);
+    add_class(title, "tp-title");
     gtk_widget_set_halign(title, GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(box), title, FALSE, FALSE, 0);
 
-    /* Scrollable container for task rows. */
+    char badge_txt[12];
+    if (off == 0)
+        g_strlcpy(badge_txt, "TODAY", sizeof(badge_txt));
+    else
+        g_snprintf(badge_txt, sizeof(badge_txt), "%+dd", off);
+    GtkWidget *badge = gtk_label_new(badge_txt);
+    add_class(badge, "tp-badge");
+    gtk_widget_set_valign(badge, GTK_ALIGN_CENTER);
+
+    GtkWidget *close = gtk_button_new_with_label("\xE2\x9C\x95");
+    add_class(close, "tp-close");
+    gtk_widget_set_valign(close, GTK_ALIGN_CENTER);
+    g_signal_connect(close, "clicked", G_CALLBACK(on_editor_close), app);
+
+    gtk_box_pack_start(GTK_BOX(head), title, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(head), close, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(head), badge, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), head, FALSE, FALSE, 0);
+
+    /* Slim completion bar. */
+    GtkWidget *prog = gtk_progress_bar_new();
+    add_class(prog, "tp-prog");
+    gtk_widget_set_no_show_all(prog, TRUE);  /* visibility set in refresh */
+    gtk_box_pack_start(GTK_BOX(box), prog, FALSE, FALSE, 0);
+
+    /* Scrollable container for task rows (capped so long lists scroll). */
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scroll), 180);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(scroll), 40);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scroll), 168);
     gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(scroll), TRUE);
-    GtkWidget *rows = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    GtkWidget *rows = gtk_box_new(GTK_ORIENTATION_VERTICAL, 1);
     gtk_container_add(GTK_CONTAINER(scroll), rows);
     gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
 
+    /* Footer tally. */
+    GtkWidget *foot = gtk_label_new("");
+    add_class(foot, "tp-foot");
+    gtk_widget_set_halign(foot, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(box), foot, FALSE, FALSE, 0);
+
     /* Entry + Add button row. */
-    GtkWidget *addrow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    GtkWidget *addrow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     GtkWidget *entry = gtk_entry_new();
+    add_class(entry, "tp-entry");
     gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "New task…");
     gtk_widget_set_hexpand(entry, TRUE);
     g_signal_connect(entry, "activate", G_CALLBACK(on_task_add), app);
     GtkWidget *add = gtk_button_new_with_label("Add");
+    add_class(add, "tp-add");
     g_signal_connect(add, "clicked", G_CALLBACK(on_task_add), app);
     gtk_box_pack_start(GTK_BOX(addrow), entry, TRUE, TRUE, 0);
     gtk_box_pack_end(GTK_BOX(addrow), add, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), addrow, FALSE, FALSE, 0);
 
-    gtk_container_add(GTK_CONTAINER(app->popover), box);
-    g_object_set_data(G_OBJECT(app->popover), "rows", rows);
-    g_object_set_data(G_OBJECT(app->popover), "entry", entry);
-    g_signal_connect(app->popover, "closed", G_CALLBACK(on_popover_closed), app);
+    g_object_set_data(G_OBJECT(win), "rows", rows);
+    g_object_set_data(G_OBJECT(win), "entry", entry);
+    g_object_set_data(G_OBJECT(win), "prog", prog);
+    g_object_set_data(G_OBJECT(win), "foot", foot);
+    g_signal_connect(win, "destroy", G_CALLBACK(on_editor_destroy), app);
+    g_signal_connect(win, "key-press-event", G_CALLBACK(on_editor_key), app);
 
     popover_refresh(app);
-    gtk_widget_show_all(box);
-    gtk_popover_popup(GTK_POPOVER(app->popover));
+    gtk_widget_show_all(win);
+    place_editor(app, win, off);
+    gtk_window_present(GTK_WINDOW(win));
     gtk_widget_grab_focus(entry);
 }
 
@@ -214,12 +415,12 @@ static gboolean on_motion(GtkWidget *w, GdkEventMotion *e, gpointer ud) {
     if (hit != app->has_hover || (hit && off != app->hover_offset)) {
         app->has_hover = hit;
         app->hover_offset = hit ? off : HOVER_NONE;
-        gtk_widget_queue_draw(app->area);
+        gtk_widget_queue_draw(app->area);   /* repaint the dot highlight */
     }
     return FALSE;
 }
 
-/* Clear the hover state when the pointer leaves the drawing area. */
+/* Clear the hover state (dot highlight) when the pointer leaves the area. */
 static gboolean on_leave(GtkWidget *w, GdkEventCrossing *e, gpointer ud) {
     (void)w; (void)e;
     App *app = ud;

@@ -1,10 +1,9 @@
 #include "window.h"
 #include "timeline.h"
 #include "cat.h"
-#include "tooltip.h"
 #include "input.h"
 
-/* Draw callback: paint background, then timeline, cat and any tooltip. */
+/* Draw callback: paint background, then timeline and cat. */
 static gboolean on_draw(GtkWidget *w, cairo_t *cr, gpointer ud) {
     (void)w;
     App *app = ud;
@@ -17,8 +16,6 @@ static gboolean on_draw(GtkWidget *w, cairo_t *cr, gpointer ud) {
 
     timeline_draw(app, cr);
     cat_draw(app, cr);
-    if (app->has_hover)
-        tooltip_draw(app, cr);
 
     return FALSE;
 }
