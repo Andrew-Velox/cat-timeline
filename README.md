@@ -27,10 +27,18 @@ the theme — see [Credits](#credits).
   coded by state (pending / today / past / done).
 - Hover tooltip drawn on the canvas (date, `+Nd` offset, task list, hint).
 - Click a dot to open a `GtkPopover` for adding, toggling and deleting tasks.
+- **Double-click** empty space to open a **settings window**: a month calendar
+  (days with tasks are marked, and you can add/toggle/delete a day's tasks) and
+  an **Appearance** panel with colour pickers for the timeline, cat, tasks and
+  dots. Changes apply live and are saved.
 - Right-click anywhere for a **Quit** menu; click-and-drag empty space to move
   the window.
-- Tasks stored as JSON in `~/.local/share/cat-timeline/tasks.json`, saved on
-  every change.
+- The timeline scrolls with the clock: each day's dot sits on the cat at
+  midnight and drifts left as the day elapses, so tomorrow's dot reaches the cat
+  as today ends. Set `CAT_TIMELINE_DEMO=<seconds>` to compress a "day" into that
+  many seconds and watch it scroll.
+- Tasks stored as JSON in `~/.local/share/cat-timeline/tasks.json`; colours in
+  `~/.local/share/cat-timeline/settings.json`. Both saved on every change.
 
 ---
 
@@ -152,6 +160,8 @@ cat-timeline/
 │   ├── cat.c/h       Cairo cat animation
 │   ├── tasks.c/h     JSON load/save, task model, date helpers
 │   ├── tooltip.c/h   hover popup rendered on the canvas
+│   ├── settings.c/h  colour palette load/save (settings.json)
+│   ├── settings_window.c/h  double-click calendar + appearance window
 │   └── input.c/h     mouse events, drag, context menu, task popover
 └── assets/
     ├── cJSON.h

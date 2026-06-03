@@ -1,18 +1,6 @@
 #include "timeline.h"
 #include <math.h>
 
-/* ---- task dash colours (0xRRGGBB) -------------------------------------- */
-#define COL_DASH_FUTURE   0xff55aa   /* pending, future day  */
-#define COL_DASH_TODAY    0xffaacc   /* pending, today       */
-#define COL_DASH_PAST     0x221540   /* pending, past day    */
-#define COL_DASH_DONE     0x180f2e   /* completed task       */
-
-/* ---- dot colours ------------------------------------------------------- */
-#define COL_DOT_PAST      0x1d1638
-#define COL_DOT_TODAY     0xcc77ff
-#define COL_DOT_FUTURE    0x3d2f9e
-#define COL_DOT_HOVER     0xee99ff
-
 /* Screen x of a day's dot. The strip scrolls left as the day elapses, so the
  * dot sits on the cat (TODAY_X) at that day's midnight and drifts off by one
  * full slot over 24h — tomorrow's dot reaching the cat as today ends. */
@@ -25,15 +13,20 @@ int nearest_offset(double x) {
     return (int)lround((x - TODAY_X) / DOT_SPACING + day_fraction());
 }
 
-/* Draw the soft purple horizontal line with a glow and edges that fade out. */
-static void draw_line(cairo_t *cr) {
-    /* x-gradient: transparent at both ends, bright purple in the middle. */
+/* Draw the soft accent-coloured horizontal line with a glow and faded edges. */
+static void draw_line(App *app, cairo_t *cr) {
+    double r, g, b;
+    hex_rgb(app->settings.accent, &r, &g, &b);
+    double br, bg, bb;                                   /* brighter mid-stop */
+    hex_rgb(hex_lighten(app->settings.accent, 0.12), &br, &bg, &bb);
+
+    /* x-gradient: transparent at both ends, bright accent in the middle. */
     cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, WIN_W, 0);
-    cairo_pattern_add_color_stop_rgba(grad, 0.00, 0.48, 0.36, 1.0, 0.0);
-    cairo_pattern_add_color_stop_rgba(grad, 0.18, 0.48, 0.36, 1.0, 0.55);
-    cairo_pattern_add_color_stop_rgba(grad, 0.50, 0.55, 0.42, 1.0, 0.9);
-    cairo_pattern_add_color_stop_rgba(grad, 0.82, 0.48, 0.36, 1.0, 0.55);
-    cairo_pattern_add_color_stop_rgba(grad, 1.00, 0.48, 0.36, 1.0, 0.0);
+    cairo_pattern_add_color_stop_rgba(grad, 0.00, r, g, b, 0.0);
+    cairo_pattern_add_color_stop_rgba(grad, 0.18, r, g, b, 0.55);
+    cairo_pattern_add_color_stop_rgba(grad, 0.50, br, bg, bb, 0.9);
+    cairo_pattern_add_color_stop_rgba(grad, 0.82, r, g, b, 0.55);
+    cairo_pattern_add_color_stop_rgba(grad, 1.00, r, g, b, 0.0);
 
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     cairo_set_source(cr, grad);
@@ -65,10 +58,13 @@ static void draw_pulse(App *app, cairo_t *cr) {
     if (alpha < 0.01)
         return;
 
+    double r, gg, b;
+    hex_rgb(hex_lighten(app->settings.accent, 0.45), &r, &gg, &b);
+
     const double radius = 48.0;
     cairo_pattern_t *g = cairo_pattern_create_radial(px, LINE_Y, 0, px, LINE_Y, radius);
-    cairo_pattern_add_color_stop_rgba(g, 0.0, 0.88, 0.74, 1.0, alpha);
-    cairo_pattern_add_color_stop_rgba(g, 1.0, 0.88, 0.74, 1.0, 0.0);
+    cairo_pattern_add_color_stop_rgba(g, 0.0, r, gg, b, alpha);
+    cairo_pattern_add_color_stop_rgba(g, 1.0, r, gg, b, 0.0);
 
     cairo_save(cr);
     /* Hug the line: clip to a thin band so the glow stays on the timeline. */
@@ -82,7 +78,7 @@ static void draw_pulse(App *app, cairo_t *cr) {
 }
 
 /* Draw the vertical task dashes (one per task) above a dot. */
-static void draw_dashes(cairo_t *cr, DayTasks *d, int offset, double cx) {
+static void draw_dashes(App *app, cairo_t *cr, DayTasks *d, int offset, double cx) {
     if (!d || d->count == 0)
         return;
 
@@ -102,13 +98,13 @@ static void draw_dashes(cairo_t *cr, DayTasks *d, int offset, double cx) {
         unsigned int col;
         double glow = 0.0;
         if (d->tasks[i].done) {
-            col = COL_DASH_DONE;
+            col = app->settings.done;
         } else if (offset < 0) {
-            col = COL_DASH_PAST;
+            col = app->settings.past;
         } else if (offset == 0) {
-            col = COL_DASH_TODAY;
+            col = hex_lighten(app->settings.task, 0.2);   /* pending, today */
         } else {
-            col = COL_DASH_FUTURE;
+            col = app->settings.task;                     /* pending, future */
             glow = 1.0;             /* future pending tasks get a soft glow */
         }
 
@@ -134,7 +130,7 @@ static void draw_dashes(cairo_t *cr, DayTasks *d, int offset, double cx) {
         cairo_set_font_size(cr, 9);
         cairo_text_extents_t ext;
         cairo_text_extents(cr, buf, &ext);
-        set_hex(cr, COL_DASH_TODAY, 0.9);
+        set_hex(cr, hex_lighten(app->settings.task, 0.2), 0.9);
         cairo_move_to(cr, cx - ext.width / 2.0, top - h - 4);
         cairo_show_text(cr, buf);
     }
@@ -152,18 +148,18 @@ static void draw_dot(App *app, cairo_t *cr, int offset) {
     double glow = 0.0;
 
     if (offset == 0) {
-        col = COL_DOT_TODAY;
+        col = app->settings.accent;
         r = 4.5;
         glow = 1.0;
     } else if (offset < 0) {
-        col = COL_DOT_PAST;
+        col = app->settings.past;
         r = 3.0;
     } else {
-        col = COL_DOT_FUTURE;
+        col = app->settings.future;
         r = 3.0;
     }
     if (hovered) {
-        col = COL_DOT_HOVER;
+        col = hex_lighten(col, 0.4);
         r += 1.5;
         glow = 1.0;
     }
@@ -192,7 +188,7 @@ static void draw_dot(App *app, cairo_t *cr, int offset) {
         cairo_set_font_size(cr, 9);
         cairo_text_extents_t ext;
         cairo_text_extents(cr, label, &ext);
-        set_hex(cr, offset == 0 ? COL_DOT_TODAY : 0x6a5a9a, offset == 0 ? 1.0 : 0.8);
+        set_hex(cr, offset == 0 ? app->settings.accent : 0x6a5a9a, offset == 0 ? 1.0 : 0.8);
         cairo_move_to(cr, cx - ext.width / 2.0, LINE_Y + 16);
         cairo_show_text(cr, label);
     }
@@ -200,7 +196,7 @@ static void draw_dot(App *app, cairo_t *cr, int offset) {
 
 /* Render the whole timeline: line, dots, labels and per-day task dashes. */
 void timeline_draw(App *app, cairo_t *cr) {
-    draw_line(cr);
+    draw_line(app, cr);
     draw_pulse(app, cr);
 
     /* One extra day each side so dots scroll in/out instead of popping. */
@@ -212,6 +208,6 @@ void timeline_draw(App *app, cairo_t *cr) {
         date_for_offset(off, date);
         DayTasks *d = tasks_find_day(&app->store, date);
         draw_dot(app, cr, off);
-        draw_dashes(cr, d, off, cx);
+        draw_dashes(app, cr, d, off, cx);
     }
 }

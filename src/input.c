@@ -1,5 +1,6 @@
 #include "input.h"
 #include "timeline.h"
+#include "settings_window.h"
 #include <math.h>
 
 /* ---- hit testing ------------------------------------------------------- */
@@ -199,6 +200,15 @@ static gboolean on_motion(GtkWidget *w, GdkEventMotion *e, gpointer ud) {
     app->mouse_x = e->x;
     app->mouse_y = e->y;
 
+    /* Armed by an empty-space press: start the window move once we actually
+     * move, so a stationary double-click can still open the settings window. */
+    if (app->drag_armed && (e->state & GDK_BUTTON1_MASK)) {
+        app->drag_armed = FALSE;
+        gtk_window_begin_move_drag(GTK_WINDOW(app->window), 1,
+                                   (int)e->x_root, (int)e->y_root, e->time);
+        return TRUE;
+    }
+
     int off = HOVER_NONE;
     gboolean hit = hit_dot(e->x, e->y, &off);
     if (hit != app->has_hover || (hit && off != app->hover_offset)) {
@@ -225,6 +235,15 @@ static gboolean on_leave(GtkWidget *w, GdkEventCrossing *e, gpointer ud) {
 static gboolean on_button_press(GtkWidget *w, GdkEventButton *e, gpointer ud) {
     (void)w;
     App *app = ud;
+
+    /* Double-click on empty space opens the settings + calendar window. */
+    if (e->type == GDK_2BUTTON_PRESS && e->button == GDK_BUTTON_PRIMARY) {
+        app->drag_armed = FALSE;
+        int off;
+        if (!hit_dot(e->x, e->y, &off))
+            settings_window_open(app);
+        return TRUE;
+    }
     if (e->type != GDK_BUTTON_PRESS)
         return FALSE;
 
@@ -238,11 +257,19 @@ static gboolean on_button_press(GtkWidget *w, GdkEventButton *e, gpointer ud) {
             open_popover(app, off);
             return TRUE;
         }
-        /* Empty space: let the user drag the borderless window around. */
-        gtk_window_begin_move_drag(GTK_WINDOW(app->window),
-                                   e->button, e->x_root, e->y_root, e->time);
+        /* Empty space: arm a drag (begins on motion) so a double-click here
+         * still reaches us as GDK_2BUTTON_PRESS. */
+        app->drag_armed = TRUE;
         return TRUE;
     }
+    return FALSE;
+}
+
+/* Disarm a pending drag when the button is released without moving. */
+static gboolean on_button_release(GtkWidget *w, GdkEventButton *e, gpointer ud) {
+    (void)w; (void)e;
+    App *app = ud;
+    app->drag_armed = FALSE;
     return FALSE;
 }
 
@@ -250,8 +277,10 @@ static gboolean on_button_press(GtkWidget *w, GdkEventButton *e, gpointer ud) {
 void input_attach(App *app) {
     gtk_widget_add_events(app->area,
                           GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK |
+                          GDK_BUTTON_RELEASE_MASK |
                           GDK_LEAVE_NOTIFY_MASK | GDK_ENTER_NOTIFY_MASK);
     g_signal_connect(app->area, "motion-notify-event", G_CALLBACK(on_motion), app);
     g_signal_connect(app->area, "leave-notify-event", G_CALLBACK(on_leave), app);
     g_signal_connect(app->area, "button-press-event", G_CALLBACK(on_button_press), app);
+    g_signal_connect(app->area, "button-release-event", G_CALLBACK(on_button_release), app);
 }

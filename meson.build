@@ -18,6 +18,8 @@ sources = [
   'src/tasks.c',
   'src/tooltip.c',
   'src/input.c',
+  'src/settings.c',
+  'src/settings_window.c',
   'assets/cJSON.c',
 ]
 

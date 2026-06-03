@@ -3,7 +3,6 @@
 #include "runcat_frames.h"
 #include <math.h>
 
-#define CAT_COLOR  0xf0e0ff          /* soft white-purple tint */
 #define CAT_FRAMES 5                  /* RunCat runner has 5 frames */
 #define CAT_SIZE   30.0              /* on-screen size in px (sprites are 32x32) */
 
@@ -38,13 +37,13 @@ static void blit_tinted(cairo_t *cr, cairo_surface_t *s, double cx, double top,
 }
 
 /* Draw fading paw-print dots trailing behind the cat. */
-static void draw_paw_trail(cairo_t *cr, double cx) {
+static void draw_paw_trail(cairo_t *cr, double cx, unsigned int col) {
     for (int i = 0; i < 4; i++) {
         double x = cx - 18 - i * 8.0;
         double a = 0.28 - i * 0.06;
         if (a <= 0)
             break;
-        set_hex(cr, CAT_COLOR, a);
+        set_hex(cr, col, a);
         cairo_arc(cr, x, LINE_Y + 2, 1.5, 0, 2 * M_PI);
         cairo_fill(cr);
     }
@@ -56,13 +55,14 @@ void cat_draw(App *app, cairo_t *cr) {
         load_frames();
 
     int f = app->frame % CAT_FRAMES;
+    unsigned int col = app->settings.cat;
     double cx = TODAY_X;
     double bob = sin((app->frame / (double)CAT_FRAMES) * 2.0 * M_PI) * 1.0;
     double top = LINE_Y - CAT_SIZE + 5.0 + bob;   /* feet rest near the line */
 
-    draw_paw_trail(cr, cx);
-    blit_tinted(cr, g_frames[f], cx, top - 1.0, CAT_SIZE + 4.0, CAT_COLOR, 0.16); /* glow */
-    blit_tinted(cr, g_frames[f], cx, top, CAT_SIZE, CAT_COLOR, 1.0);             /* solid */
+    draw_paw_trail(cr, cx, col);
+    blit_tinted(cr, g_frames[f], cx, top - 1.0, CAT_SIZE + 4.0, col, 0.16); /* glow */
+    blit_tinted(cr, g_frames[f], cx, top, CAT_SIZE, col, 1.0);             /* solid */
 }
 
 /* Timer callback: advance to the next sprite frame and queue a redraw. */

@@ -12,6 +12,7 @@ int main(int argc, char **argv) {
 
     task_store_init(&app.store);
     tasks_load(&app.store);                 /* load saved tasks (ok if none) */
+    settings_load(&app.settings);           /* load colours (defaults if none) */
 
     window_create(&app);
 
