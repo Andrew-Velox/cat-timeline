@@ -39,7 +39,10 @@ typedef struct {
     double mouse_x, mouse_y;/* last pointer position on the area  */
     int hover_offset;       /* day offset under cursor, or none   */
     gboolean has_hover;     /* whether a dot is currently hovered */
-    gboolean drag_armed;    /* empty-space press: drag on motion  */
+    gboolean dragging;      /* actively dragging the widget        */
+    gboolean press_pending; /* primary pressed, click-vs-drag undecided */
+    double press_x, press_y;/* where the press landed (area coords)     */
+    int press_off;          /* dot offset under the press, or HOVER_NONE */
 } App;
 
 /* Set the Cairo source colour from a 0xRRGGBB hex value plus alpha. */

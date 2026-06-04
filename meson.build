@@ -7,6 +7,17 @@ gtk_dep   = dependency('gtk+-3.0')
 cairo_dep = dependency('cairo')
 m_dep     = meson.get_compiler('c').find_library('m', required : false)
 
+# Optional: gtk-layer-shell anchors the widget to the desktop (bottom layer) on
+# Wayland — it sits below apps like a normal desktop widget instead of floating
+# on top. Without it, the app falls back to a borderless always-on-top window.
+layershell_dep = dependency('gtk-layer-shell-0', required : false)
+
+deps = [gtk_dep, cairo_dep, m_dep]
+if layershell_dep.found()
+  deps += layershell_dep
+  add_project_arguments('-DHAVE_LAYER_SHELL', language : 'c')
+endif
+
 # cJSON ships as source inside assets/ and is compiled directly in.
 inc = include_directories('assets')
 
@@ -26,5 +37,5 @@ sources = [
 executable('cat-timeline',
   sources,
   include_directories : inc,
-  dependencies : [gtk_dep, cairo_dep, m_dep],
+  dependencies : deps,
   install : true)

@@ -102,37 +102,44 @@ sudo ninja -C build install
 
 ## Autostart on Hyprland
 
-Add the binary to your Hyprland config (`~/.config/hypr/hyprland.conf`, or a
-sourced custom file — on **end-4 / illogical-impulse** put it in
-`~/.config/hypr/custom/`). Wayland compositors place windows themselves, so use
-window rules to pin the widget and strip the window decorations:
+Add this to your Hyprland config. On **end-4 / illogical-impulse**, put the
+`exec-once` in `~/.config/hypr/custom/execs.conf` and the rules in
+`~/.config/hypr/custom/rules.conf`; otherwise use `~/.config/hypr/hyprland.conf`.
+Wayland compositors place windows themselves, so window rules pin the widget and
+strip the decorations. The syntax below is for **Hyprland 0.50+**:
 
 ```ini
-# Launch the widget at startup (use an absolute path or install it on $PATH)
+# Launch at login (install it first, or use the binary's absolute path)
 exec-once = cat-timeline
 
-# Target the main widget only (its window title is exactly "cat-timeline";
-# the task/settings panels use other titles so they stay normal).
-windowrulev2 = float,       title:^(cat-timeline)$
-windowrulev2 = pin,         title:^(cat-timeline)$
-windowrulev2 = nofocus,     title:^(cat-timeline)$
-windowrulev2 = size 320 90, title:^(cat-timeline)$
-windowrulev2 = move 100%-344 100%-114, title:^(cat-timeline)$
+# Match the main widget by its exact title "cat-timeline" — the task/settings
+# panels use other titles, so they stay focusable and normal.
+windowrule = match:title ^(cat-timeline)$, float on
+windowrule = match:title ^(cat-timeline)$, pin on
+windowrule = match:title ^(cat-timeline)$, no_focus on
+windowrule = match:title ^(cat-timeline)$, size 320 90
+windowrule = match:title ^(cat-timeline)$, move 1576 966
 
-# Strip decorations so only the transparent widget shows (no card/box).
-# Needed on setups like end-4 that round/border/shadow/blur every window.
-windowrulev2 = noborder,    title:^(cat-timeline)$
-windowrulev2 = rounding 0,  title:^(cat-timeline)$
-windowrulev2 = noshadow,    title:^(cat-timeline)$
-windowrulev2 = noblur,      title:^(cat-timeline)$
+# Strip decorations so only the transparent widget shows (no card/box) —
+# needed on setups like end-4 that round/border/shadow/blur every window.
+windowrule = match:title ^(cat-timeline)$, border_size 0
+windowrule = match:title ^(cat-timeline)$, rounding 0
+windowrule = match:title ^(cat-timeline)$, no_shadow on
+windowrule = match:title ^(cat-timeline)$, no_blur on
 ```
 
-`move 100%-344 100%-114` anchors it 24px from the bottom-right corner
-(320 + 24 = 344, 90 + 24 = 114). Reload with `hyprctl reload`.
+`move 1576 966` puts it 24px from the bottom-right of a **1920 × 1080** monitor
+(1920 − 344, 1080 − 114). Adjust for your resolution: `move (width-344) (height-114)`.
+Hyprland's `move` rule needs **literal pixels** — `100%-…` expressions are ignored.
+
+> `exec-once` only runs at login, so after adding these either re-login or launch
+> it once now with `hyprctl dispatch exec cat-timeline` (and `hyprctl reload` to
+> apply the rules). On older Hyprland (< 0.50) use the legacy form instead, e.g.
+> `windowrulev2 = float, title:^(cat-timeline)$`.
 
 > **Seeing a rounded box / border around the widget?** That is your compositor
 > drawing window decorations, not the app (its background is fully transparent).
-> The `noborder` / `rounding 0` / `noshadow` / `noblur` rules above remove it.
+> The `border_size 0` / `rounding 0` / `no_shadow` / `no_blur` rules remove it.
 
 > For a true see-through widget you also need a compositor doing alpha blending.
 > Hyprland does this out of the box; on other setups make sure a compositor

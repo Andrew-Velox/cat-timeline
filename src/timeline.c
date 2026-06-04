@@ -199,8 +199,8 @@ void timeline_draw(App *app, cairo_t *cr) {
     draw_line(app, cr);
     draw_pulse(app, cr);
 
-    /* One extra day each side so dots scroll in/out instead of popping. */
-    for (int off = -PAST_DAYS - 1; off <= FUTURE_DAYS + 1; off++) {
+    /* Exactly PAST_DAYS + today + FUTURE_DAYS dots. */
+    for (int off = -PAST_DAYS; off <= FUTURE_DAYS; off++) {
         double cx = dot_x(off);
         if (cx < -DOT_SPACING || cx > WIN_W + DOT_SPACING)
             continue;

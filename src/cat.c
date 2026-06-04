@@ -1,5 +1,6 @@
 #include "cat.h"
 #include "timeline.h"
+#include "window.h"
 #include "runcat_frames.h"
 #include <math.h>
 
@@ -70,6 +71,6 @@ gboolean cat_tick(gpointer user_data) {
     App *app = user_data;
     app->frame = (app->frame + 1) % CAT_FRAMES;
     app->tick++;                       /* drives the timeline pulse */
-    gtk_widget_queue_draw(app->area);
+    window_redraw(app);
     return G_SOURCE_CONTINUE;
 }

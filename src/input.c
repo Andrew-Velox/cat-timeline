@@ -2,15 +2,18 @@
 #include "timeline.h"
 #include "settings_window.h"
 #include "style.h"
+#include "window.h"
 #include <gdk/gdkkeysyms.h>
 #include <math.h>
+
+#define DRAG_THRESHOLD 4.0      /* px of movement before a press becomes a drag */
 
 /* ---- hit testing ------------------------------------------------------- */
 
 /* Return TRUE and the day offset when (x,y) falls within a dot's hover zone. */
 static gboolean hit_dot(double x, double y, int *out_off) {
     int off = nearest_offset(x);
-    if (off < -PAST_DAYS - 1 || off > FUTURE_DAYS + 1)
+    if (off < -PAST_DAYS || off > FUTURE_DAYS)
         return FALSE;
     if (fabs(x - dot_x(off)) <= DOT_SPACING / 2.0 && fabs(y - LINE_Y) <= HOVER_VPAD) {
         *out_off = off;
@@ -31,7 +34,7 @@ static void on_task_toggle(GtkButton *b, gpointer ud) {
     date_for_offset(app->popover_offset, date);
     tasks_toggle(&app->store, date, id);
     popover_refresh(app);
-    gtk_widget_queue_draw(app->area);
+    window_redraw(app);
 }
 
 /* Delete the clicked task, then rebuild the popover + canvas. */
@@ -42,7 +45,7 @@ static void on_task_delete(GtkButton *b, gpointer ud) {
     date_for_offset(app->popover_offset, date);
     tasks_delete(&app->store, date, id);
     popover_refresh(app);
-    gtk_widget_queue_draw(app->area);
+    window_redraw(app);
 }
 
 /* Add the entry's text as a new task for the popover's day. */
@@ -57,7 +60,7 @@ static void on_task_add(GtkWidget *w, gpointer ud) {
         tasks_add(&app->store, date, txt);
         gtk_entry_set_text(entry, "");
         popover_refresh(app);
-        gtk_widget_queue_draw(app->area);
+        window_redraw(app);
     }
 }
 
@@ -185,8 +188,10 @@ static void place_editor(App *app, GtkWidget *win, int off) {
     if (aw)
         gdk_window_get_origin(aw, &rx, &ry);
 
-    int x = rx + (int)dot_x(off) - req.width / 2;
-    int y = ry - req.height - 10;
+    double ox, oy;
+    window_widget_origin(app, &ox, &oy);   /* widget offset within the surface */
+    int x = rx + (int)(ox + dot_x(off)) - req.width / 2;
+    int y = ry + (int)oy - req.height - 10;
 
     GdkDisplay *display = gdk_display_get_default();
     GdkMonitor *mon = aw ? gdk_display_get_monitor_at_window(display, aw)
@@ -332,24 +337,42 @@ static void show_context_menu(GdkEvent *ev) {
 static gboolean on_motion(GtkWidget *w, GdkEventMotion *e, gpointer ud) {
     (void)w;
     App *app = ud;
-    app->mouse_x = e->x;
-    app->mouse_y = e->y;
 
-    /* Armed by an empty-space press: start the window move once we actually
-     * move, so a stationary double-click can still open the settings window. */
-    if (app->drag_armed && (e->state & GDK_BUTTON1_MASK)) {
-        app->drag_armed = FALSE;
-        gtk_window_begin_move_drag(GTK_WINDOW(app->window), 1,
-                                   (int)e->x_root, (int)e->y_root, e->time);
+    /* Already dragging: keep following the pointer (surface-space coords). */
+    if (app->dragging && (e->state & GDK_BUTTON1_MASK)) {
+        window_drag_update(app, e->x, e->y);
+        return TRUE;
+    }
+    /* A held primary press becomes a drag once it moves past the threshold (so
+     * a clean click still opens a dot / settings). Drags start from anywhere. */
+    if (app->press_pending && (e->state & GDK_BUTTON1_MASK)) {
+        if (fabs(e->x - app->press_x) > DRAG_THRESHOLD ||
+            fabs(e->y - app->press_y) > DRAG_THRESHOLD) {
+            app->press_pending = FALSE;
+#ifdef HAVE_LAYER_SHELL
+            app->dragging = TRUE;
+            window_drag_begin(app, e->x, e->y);
+#else
+            gtk_window_begin_move_drag(GTK_WINDOW(app->window), 1,
+                                       (int)e->x_root, (int)e->y_root, e->time);
+#endif
+        }
         return TRUE;
     }
 
+    /* Hover highlight: translate to widget-local coordinates first. */
+    double ox, oy;
+    window_widget_origin(app, &ox, &oy);
+    double lx = e->x - ox, ly = e->y - oy;
+    app->mouse_x = lx;
+    app->mouse_y = ly;
+
     int off = HOVER_NONE;
-    gboolean hit = hit_dot(e->x, e->y, &off);
+    gboolean hit = hit_dot(lx, ly, &off);
     if (hit != app->has_hover || (hit && off != app->hover_offset)) {
         app->has_hover = hit;
         app->hover_offset = hit ? off : HOVER_NONE;
-        gtk_widget_queue_draw(app->area);   /* repaint the dot highlight */
+        window_redraw(app);   /* repaint the dot highlight */
     }
     return FALSE;
 }
@@ -361,7 +384,7 @@ static gboolean on_leave(GtkWidget *w, GdkEventCrossing *e, gpointer ud) {
     if (app->has_hover) {
         app->has_hover = FALSE;
         app->hover_offset = HOVER_NONE;
-        gtk_widget_queue_draw(app->area);
+        window_redraw(app);
     }
     return FALSE;
 }
@@ -371,11 +394,16 @@ static gboolean on_button_press(GtkWidget *w, GdkEventButton *e, gpointer ud) {
     (void)w;
     App *app = ud;
 
+    /* Translate to widget-local coordinates for hit testing. */
+    double ox, oy;
+    window_widget_origin(app, &ox, &oy);
+    double lx = e->x - ox, ly = e->y - oy;
+
     /* Double-click on empty space opens the settings + calendar window. */
     if (e->type == GDK_2BUTTON_PRESS && e->button == GDK_BUTTON_PRIMARY) {
-        app->drag_armed = FALSE;
+        app->press_pending = FALSE;
         int off;
-        if (!hit_dot(e->x, e->y, &off))
+        if (!hit_dot(lx, ly, &off))
             settings_window_open(app);
         return TRUE;
     }
@@ -387,24 +415,32 @@ static gboolean on_button_press(GtkWidget *w, GdkEventButton *e, gpointer ud) {
         return TRUE;
     }
     if (e->button == GDK_BUTTON_PRIMARY) {
+        /* Defer the action to release: a clean click opens the dot under it,
+         * while a press + drag moves the widget (handled in on_motion). The
+         * press point is kept in surface coords for the drag threshold. */
         int off;
-        if (hit_dot(e->x, e->y, &off)) {
-            open_popover(app, off);
-            return TRUE;
-        }
-        /* Empty space: arm a drag (begins on motion) so a double-click here
-         * still reaches us as GDK_2BUTTON_PRESS. */
-        app->drag_armed = TRUE;
+        app->press_pending = TRUE;
+        app->dragging = FALSE;
+        app->press_x = e->x;
+        app->press_y = e->y;
+        app->press_off = hit_dot(lx, ly, &off) ? off : HOVER_NONE;
         return TRUE;
     }
     return FALSE;
 }
 
-/* Disarm a pending drag when the button is released without moving. */
+/* On release: finish a drag (persist), or treat a no-move press as a click. */
 static gboolean on_button_release(GtkWidget *w, GdkEventButton *e, gpointer ud) {
-    (void)w; (void)e;
+    (void)w;
     App *app = ud;
-    app->drag_armed = FALSE;
+    if (app->dragging) {
+        app->dragging = FALSE;
+        window_drag_end(app);
+    } else if (app->press_pending && e->button == GDK_BUTTON_PRIMARY) {
+        app->press_pending = FALSE;
+        if (app->press_off != HOVER_NONE)        /* clicked a dot: open editor */
+            open_popover(app, app->press_off);
+    }
     return FALSE;
 }
 
