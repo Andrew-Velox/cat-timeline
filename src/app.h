@@ -12,10 +12,10 @@
 #endif
 
 /* ---- window / timeline geometry (pixels) ------------------------------- */
-#define WIN_W        320
+#define WIN_W        260            /* snug around the 5 dots (~30px margins) */
 #define WIN_H        90
 #define LINE_Y       60.0           /* horizontal line, ~67% from top  */
-#define TODAY_X      80.0           /* today's dot, 25% from left edge */
+#define TODAY_X      80.0           /* today's dot, ~30% from left edge */
 #define DOT_SPACING  50.0           /* gap between adjacent day dots   */
 #define PAST_DAYS    1              /* visible days to the left        */
 #define FUTURE_DAYS  3              /* visible days to the right       */
