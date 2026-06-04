@@ -10,6 +10,7 @@ typedef struct {
     unsigned int future;   /* upcoming day dots                      */
     unsigned int done;     /* completed task dashes                  */
     unsigned int past;     /* past day dots + past pending dashes    */
+    unsigned int portal;   /* the sparkling portals at the line ends */
 } Settings;
 
 /* Fill s with the built-in default palette. */

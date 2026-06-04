@@ -14,8 +14,8 @@ typedef struct {
     GtkWidget   *list;       /* vbox holding one row per task           */
     GtkWidget   *entry;      /* new-task entry for the selected day     */
 
-    GtkWidget    *cbtn[6];   /* colour buttons (for Reset to refresh)   */
-    unsigned int *cfield[6]; /* the Settings field each button edits    */
+    GtkWidget    *cbtn[7];   /* colour buttons (for Reset to refresh)   */
+    unsigned int *cfield[7]; /* the Settings field each button edits    */
     int           ncolors;
 } Ctx;
 
@@ -373,7 +373,8 @@ void settings_window_open(App *app) {
     add_color_row(ctx, grid, 3, "Upcoming days",    &s->future);
     add_color_row(ctx, grid, 4, "Past days",        &s->past);
     add_color_row(ctx, grid, 5, "Completed",        &s->done);
-    ctx->ncolors = 6;
+    add_color_row(ctx, grid, 6, "Portals",          &s->portal);
+    ctx->ncolors = 7;
 
     GtkWidget *reset = gtk_button_new_with_label("Reset to defaults");
     style_class(reset, "tp-reset");

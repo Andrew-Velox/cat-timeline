@@ -22,6 +22,7 @@ void settings_defaults(Settings *s) {
     s->future = 0xffffff;
     s->done   = 0x089000;
     s->past   = 0x999999;
+    s->portal = 0xead61c;
 }
 
 /* Read a "#rrggbb" (or "rrggbb") string field, falling back when absent. */
@@ -52,6 +53,7 @@ void settings_load(Settings *s) {
             s->future = parse_hex(root, "future", s->future);
             s->done   = parse_hex(root, "done",   s->done);
             s->past   = parse_hex(root, "past",   s->past);
+            s->portal = parse_hex(root, "portal", s->portal);
             cJSON_Delete(root);
         }
         g_free(data);
@@ -75,6 +77,7 @@ void settings_save(const Settings *s) {
     add_hex(root, "future", s->future);
     add_hex(root, "done",   s->done);
     add_hex(root, "past",   s->past);
+    add_hex(root, "portal", s->portal);
 
     char *txt = cJSON_Print(root);
     cJSON_Delete(root);
