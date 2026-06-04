@@ -21,7 +21,7 @@ void settings_defaults(Settings *s) {
     s->task   = 0xff0000;
     s->future = 0xffffff;
     s->done   = 0x089000;
-    s->past   = 0x1d1638;
+    s->past   = 0x999999;
 }
 
 /* Read a "#rrggbb" (or "rrggbb") string field, falling back when absent. */

@@ -37,19 +37,6 @@ static void blit_tinted(cairo_t *cr, cairo_surface_t *s, double cx, double top,
     cairo_restore(cr);
 }
 
-/* Draw fading paw-print dots trailing behind the cat. */
-static void draw_paw_trail(cairo_t *cr, double cx, unsigned int col) {
-    for (int i = 0; i < 4; i++) {
-        double x = cx - 18 - i * 8.0;
-        double a = 0.28 - i * 0.06;
-        if (a <= 0)
-            break;
-        set_hex(cr, col, a);
-        cairo_arc(cr, x, LINE_Y + 2, 1.5, 0, 2 * M_PI);
-        cairo_fill(cr);
-    }
-}
-
 /* Draw the running RunCat sprite (tinted, with a soft glow) on today's dot. */
 void cat_draw(App *app, cairo_t *cr) {
     if (!g_loaded)
@@ -61,7 +48,6 @@ void cat_draw(App *app, cairo_t *cr) {
     double bob = sin((app->frame / (double)CAT_FRAMES) * 2.0 * M_PI) * 1.0;
     double top = LINE_Y - CAT_SIZE + 5.0 + bob;   /* feet rest near the line */
 
-    draw_paw_trail(cr, cx, col);
     blit_tinted(cr, g_frames[f], cx, top - 1.0, CAT_SIZE + 4.0, col, 0.16); /* glow */
     blit_tinted(cr, g_frames[f], cx, top, CAT_SIZE, col, 1.0);             /* solid */
 }
