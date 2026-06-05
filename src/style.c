@@ -9,69 +9,81 @@ void style_class(GtkWidget *w, const char *cls) {
     gtk_style_context_add_class(gtk_widget_get_style_context(w), cls);
 }
 
+/* Dark theme for the settings window and the task editor, matching the mobile
+ * app: near-black panels, rounded task pills, uppercase section headers and a
+ * fixed blue UI accent. The widget's own palette stays user-defined; only the
+ * task-completion colour (`done`) flows into the chrome (the progress bar). */
 void style_ensure(App *app) {
     static GtkCssProvider *prov = NULL;
 
-    char accent[8], badge[8], hover[8], done[8];
-    style_hex(app->settings.accent, accent);
-    style_hex(hex_lighten(app->settings.accent, 0.62), badge);
-    style_hex(hex_lighten(app->settings.accent, 0.22), hover);
+    char done[8];
     style_hex(app->settings.done, done);
 
-    char css[3600];
+    char css[4600];
     g_snprintf(css, sizeof(css),
-        /* ---- shared light card + task rows (editor & settings) ---- */
-        ".taskpanel { background-color:#fbfbfd; border:1px solid #d3d3db;"
-        "  border-radius:12px; }"
+        /* ---- panel + typography ---- */
+        ".taskpanel { background-color:#111317; border:1px solid #262a32;"
+        "  border-radius:16px; }"
         ".tp-box { padding:14px; }"
-        ".tp-title { color:#1b1b1f; font-weight:bold; font-size:13px; }"
-        ".tp-badge { background-color:%s; color:#2a2730; border-radius:7px;"
-        "  padding:1px 8px; font-size:9px; font-weight:bold; }"
+        ".tp-title { color:#f0f1f3; font-weight:bold; font-size:15px; }"
+        ".tp-sub { color:#6b7280; font-size:10px; font-weight:bold;"
+        "  letter-spacing:1px; }"
+        ".tp-foot { color:#8b9099; font-size:10px; }"
+        ".tp-empty { color:#6b7280; font-style:italic; padding:10px 2px; }"
+        ".tp-badge { background-color:#1f2630; color:#3da9fc; border-radius:8px;"
+        "  padding:2px 8px; font-size:9px; font-weight:bold; }"
         ".tp-close { background:none; border:none; box-shadow:none; outline:none;"
-        "  min-height:0; min-width:0; padding:0 4px; color:#9aa0a6; font-size:13px; }"
-        ".tp-close:hover { color:#e05555; }"
-        ".tp-foot { color:#868c95; font-size:9px; }"
-        ".tp-empty { color:#868c95; font-style:italic; padding:8px 2px; }"
-        ".tp-task { background-image:none; background-color:transparent;"
-        "  border:none; box-shadow:none; outline:none; min-height:0;"
-        "  padding:3px 6px; color:#2a2a30; }"
-        ".tp-task:hover { background-color:rgba(0,0,0,0.06); border-radius:7px; }"
-        ".tp-del { background-image:none; background-color:transparent;"
-        "  border:none; box-shadow:none; outline:none; min-height:0;"
-        "  padding:2px 7px; color:#aeb4bd; }"
-        ".tp-del:hover { color:#e05555; background-color:rgba(224,85,85,0.14);"
-        "  border-radius:7px; }"
-        ".tp-prog trough { min-height:6px; border-radius:3px;"
-        "  background-color:#e6e6ee; border:none; }"
-        ".tp-prog progress { min-height:6px; border-radius:3px; background-color:%s; }"
-        ".tp-entry { border-radius:8px; padding:5px 8px; background-color:#ffffff;"
-        "  color:#2a2a30; border:1px solid #d8d8e0; box-shadow:none; }"
-        ".tp-entry:focus { border-color:%s; }"
-        ".tp-add { background-image:none; background-color:%s; color:#2a2730;"
-        "  font-weight:bold; border-radius:8px; padding:5px 14px;"
+        "  min-height:0; min-width:0; padding:0 4px; color:#8b9099; font-size:14px; }"
+        ".tp-close:hover { color:#ff6b6b; }"
+        /* ---- task pill rows ---- */
+        ".tp-task { background-color:#1d2129; border:1px solid #23272f;"
+        "  border-radius:12px; box-shadow:none; outline:none; min-height:0;"
+        "  padding:9px 12px; color:#e9eaed; }"
+        ".tp-task:hover { background-color:#232831; }"
+        ".tp-del { background:none; border:none; box-shadow:none; outline:none;"
+        "  min-height:0; padding:2px 8px; color:#ff6b6b; }"
+        ".tp-del:hover { color:#ff8a8a; background-color:rgba(255,107,107,0.12);"
+        "  border-radius:8px; }"
+        /* ---- progress bar ---- */
+        ".tp-prog trough { min-height:5px; border-radius:3px;"
+        "  background-color:#23272f; border:none; }"
+        ".tp-prog progress { min-height:5px; border-radius:3px; background-color:%s; }"
+        /* ---- composer ---- */
+        ".tp-entry { border-radius:12px; padding:10px 12px; background-color:#14171c;"
+        "  color:#e9eaed; border:1px solid #262a32; box-shadow:none; }"
+        ".tp-entry:focus { border-color:#3da9fc; }"
+        ".tp-entry image { color:#6b7280; }"
+        ".tp-add { background-image:none; background-color:#3da9fc; color:#08151f;"
+        "  font-weight:bold; border-radius:12px; padding:9px 18px;"
         "  border:none; box-shadow:none; }"
-        ".tp-add:hover { background-color:%s; }"
+        ".tp-add:hover { background-color:#5cb8fd; }"
+        ".tp-compose { border-top:1px solid #23262e; padding-top:10px; margin-top:2px; }"
         /* ---- settings-window specifics ---- */
-        ".tp-sub { color:#868c95; font-size:10px; font-weight:bold; }"
-        ".tp-reset { background-image:none; background-color:#f0f0f4;"
-        "  color:#5a5f66; border:1px solid #dcdce4; border-radius:8px;"
-        "  padding:4px 12px; box-shadow:none; }"
-        ".tp-reset:hover { background-color:#e8e8ee; }"
-        ".settings { color:#2a2a30; }"
+        ".tp-reset { background-image:none; background-color:#1d2129; color:#c2c7cf;"
+        "  border:1px solid #2a2f38; border-radius:10px; padding:6px 14px;"
+        "  box-shadow:none; }"
+        ".tp-reset:hover { background-color:#232831; }"
+        ".tp-card { background-color:#16181d; border:1px solid #23262e;"
+        "  border-radius:16px; padding:10px; }"
+        ".tp-date { color:#6b7280; font-size:10px; font-weight:bold;"
+        "  letter-spacing:1px; padding:2px 2px 8px 4px; }"
+        ".settings { color:#e9eaed; background-color:#111317; }"
         ".settings notebook, .settings notebook stack { background-color:transparent; }"
         ".settings notebook > header { background:transparent; border:none; }"
-        ".settings notebook > header tabs tab { padding:4px 10px; min-height:0;"
-        "  color:#868c95; border:none; background:none; }"
-        ".settings notebook > header tabs tab:checked { color:#1b1b1f;"
-        "  box-shadow:inset 0 -2px %s; }"
-        ".settings calendar { background-color:#ffffff; color:#2a2a30;"
-        "  border:1px solid #e2e2ea; border-radius:8px; padding:2px; }"
-        ".settings calendar.header { color:#2a2a30; }"
-        ".settings calendar.button { color:#5a5f66; }"
-        ".settings calendar.highlight { color:#868c95; }"
-        ".settings calendar:selected { background-color:%s; color:#2a2730;"
-        "  border-radius:5px; }",
-        badge, done, accent, accent, hover, accent, accent);
+        ".settings notebook > header tabs tab { padding:5px 12px; min-height:0;"
+        "  color:#8b9099; border:none; background:none; }"
+        ".settings notebook > header tabs tab:checked { color:#f0f1f3;"
+        "  box-shadow:inset 0 -2px #3da9fc; }"
+        /* ---- calendar ---- */
+        ".settings calendar { background-color:#16181d; color:#e9eaed;"
+        "  border:1px solid #23262e; border-radius:14px; padding:8px; font-size:12px; }"
+        ".settings calendar.header { color:#e9eaed; }"
+        ".settings calendar.button { color:#8b9099; }"
+        ".settings calendar.highlight { color:#8b9099; }"
+        ".settings calendar:indeterminate { color:#4b4f57; }"
+        ".settings calendar:selected { background-color:#3da9fc; color:#08151f;"
+        "  font-weight:bold; border-radius:50%%; }",
+        done);
 
     if (!prov) {
         prov = gtk_css_provider_new();

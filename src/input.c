@@ -120,12 +120,12 @@ static void popover_refresh(App *app) {
             if (t->done)
                 g_snprintf(markup, sizeof(markup),
                     "<span foreground='%s' size='large'>\xE2\x9C\x93</span>  "
-                    "<span foreground='#9aa0a6' strikethrough='true'>%s</span>",
+                    "<span foreground='#6b7280' strikethrough='true'>%s</span>",
                     done_hex, esc);
             else
                 g_snprintf(markup, sizeof(markup),
                     "<span foreground='%s' size='large'>\xE2\x97\x8B</span>  "
-                    "<span foreground='#2a2a30'>%s</span>",
+                    "<span foreground='#e9eaed'>%s</span>",
                     task_hex, esc);
             g_free(esc);
 
