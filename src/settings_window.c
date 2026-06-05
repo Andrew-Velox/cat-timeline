@@ -2,6 +2,7 @@
 #include "settings.h"
 #include "tasks.h"
 #include "style.h"
+#include "window.h"
 
 #include <gdk/gdkkeysyms.h>
 #include <stdio.h>
@@ -200,6 +201,16 @@ static void on_reset(GtkButton *b, gpointer ud) {
     gtk_widget_queue_draw(ctx->app->area);
 }
 
+/* Switch the widget shape (line strip vs. circular ring) and re-lay-out. */
+static void on_layout_toggled(GtkToggleButton *b, gpointer ud) {
+    if (!gtk_toggle_button_get_active(b))
+        return;                          /* only act on the newly-active one */
+    Ctx *ctx = ud;
+    ctx->app->settings.layout = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "layout"));
+    settings_save(&ctx->app->settings);
+    window_apply_layout(ctx->app);
+}
+
 /* Add one "label + colour button" row to the appearance grid. */
 static void add_color_row(Ctx *ctx, GtkWidget *grid, int idx, const char *name,
                           unsigned int *field) {
@@ -375,6 +386,25 @@ void settings_window_open(App *app) {
     add_color_row(ctx, grid, 5, "Completed",        &s->done);
     add_color_row(ctx, grid, 6, "Portals",          &s->portal);
     ctx->ncolors = 7;
+
+    /* Shape chooser: line strip or circular ring. */
+    GtkWidget *shape = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *slabel = gtk_label_new("Shape");
+    gtk_widget_set_halign(slabel, GTK_ALIGN_START);
+    gtk_widget_set_hexpand(slabel, TRUE);
+    GtkWidget *r_line = gtk_radio_button_new_with_label(NULL, "Line");
+    GtkWidget *r_circ = gtk_radio_button_new_with_label_from_widget(
+                            GTK_RADIO_BUTTON(r_line), "Circle");
+    g_object_set_data(G_OBJECT(r_line), "layout", GINT_TO_POINTER(LAYOUT_LINE));
+    g_object_set_data(G_OBJECT(r_circ), "layout", GINT_TO_POINTER(LAYOUT_CIRCLE));
+    gtk_toggle_button_set_active(
+        GTK_TOGGLE_BUTTON(s->layout == LAYOUT_CIRCLE ? r_circ : r_line), TRUE);
+    g_signal_connect(r_line, "toggled", G_CALLBACK(on_layout_toggled), ctx);
+    g_signal_connect(r_circ, "toggled", G_CALLBACK(on_layout_toggled), ctx);
+    gtk_box_pack_start(GTK_BOX(shape), slabel, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(shape), r_line, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(shape), r_circ, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(page_appearance), shape, FALSE, FALSE, 6);
 
     GtkWidget *reset = gtk_button_new_with_label("Reset to defaults");
     style_class(reset, "tp-reset");

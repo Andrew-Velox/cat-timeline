@@ -1,6 +1,10 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
+/* Widget shape: a horizontal strip or a clock-like ring. */
+#define LAYOUT_LINE   0
+#define LAYOUT_CIRCLE 1
+
 /* User-adjustable colours (0xRRGGBB), persisted to settings.json next to the
  * task data. Past-day dots are derived from `accent`/`future` at draw time. */
 typedef struct {
@@ -11,6 +15,7 @@ typedef struct {
     unsigned int done;     /* completed task dashes                  */
     unsigned int past;     /* past day dots + past pending dashes    */
     unsigned int portal;   /* the sparkling portals at the line ends */
+    int layout;            /* LAYOUT_LINE or LAYOUT_CIRCLE            */
 } Settings;
 
 /* Fill s with the built-in default palette. */

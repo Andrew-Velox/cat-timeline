@@ -21,6 +21,10 @@
 #define FUTURE_DAYS  3              /* visible days to the right       */
 #define HOVER_VPAD   22.0           /* vertical hover tolerance         */
 
+/* ---- circular layout: a square canvas with a clock-like ring ----------- */
+#define CIRC_W       200
+#define CIRC_H       200
+
 #define HOVER_NONE   INT_MIN
 
 /* Shared application state, passed to every callback as user-data. */
@@ -44,6 +48,14 @@ typedef struct {
     double press_x, press_y;/* where the press landed (area coords)     */
     int press_off;          /* dot offset under the press, or HOVER_NONE */
 } App;
+
+/* Widget canvas size for the active layout (line strip vs. circular ring). */
+static inline int widget_w(const App *a) {
+    return a->settings.layout == LAYOUT_CIRCLE ? CIRC_W : WIN_W;
+}
+static inline int widget_h(const App *a) {
+    return a->settings.layout == LAYOUT_CIRCLE ? CIRC_H : WIN_H;
+}
 
 /* Set the Cairo source colour from a 0xRRGGBB hex value plus alpha. */
 static inline void set_hex(cairo_t *cr, unsigned int hex, double a) {

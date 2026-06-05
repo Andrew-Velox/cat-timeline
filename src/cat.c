@@ -1,5 +1,6 @@
 #include "cat.h"
 #include "timeline.h"
+#include "circle.h"
 #include "window.h"
 #include "runcat_frames.h"
 #include <math.h>
@@ -44,9 +45,16 @@ void cat_draw(App *app, cairo_t *cr) {
 
     int f = app->frame % CAT_FRAMES;
     unsigned int col = app->settings.cat;
-    double cx = TODAY_X;
     double bob = sin((app->frame / (double)CAT_FRAMES) * 2.0 * M_PI) * 1.0;
-    double top = LINE_Y - CAT_SIZE + 5.0 + bob;   /* feet rest near the line */
+
+    double cx, feet;
+    if (app->settings.layout == LAYOUT_CIRCLE)
+        circle_cat_anchor(&cx, &feet);   /* runs at the bottom of the ring */
+    else {
+        cx = TODAY_X;
+        feet = LINE_Y;
+    }
+    double top = feet - CAT_SIZE + 5.0 + bob;     /* feet rest near the line */
 
     blit_tinted(cr, g_frames[f], cx, top - 1.0, CAT_SIZE + 4.0, col, 0.16); /* glow */
     blit_tinted(cr, g_frames[f], cx, top, CAT_SIZE, col, 1.0);             /* solid */

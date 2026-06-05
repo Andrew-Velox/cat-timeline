@@ -25,6 +25,7 @@ sources = [
   'src/main.c',
   'src/window.c',
   'src/timeline.c',
+  'src/circle.c',
   'src/cat.c',
   'src/tasks.c',
   'src/style.c',

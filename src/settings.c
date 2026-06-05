@@ -16,13 +16,14 @@ static char *settings_path(void) {
 
 /* Built-in default palette. */
 void settings_defaults(Settings *s) {
-    s->accent = 0xead61c;
+    s->accent = 0xffffff;
     s->cat    = 0x1c71d8;
     s->task   = 0xff0000;
     s->future = 0xffffff;
     s->done   = 0x089000;
     s->past   = 0x999999;
-    s->portal = 0xead61c;
+    s->portal = 0xffffff;
+    s->layout = LAYOUT_CIRCLE;
 }
 
 /* Read a "#rrggbb" (or "rrggbb") string field, falling back when absent. */
@@ -54,6 +55,9 @@ void settings_load(Settings *s) {
             s->done   = parse_hex(root, "done",   s->done);
             s->past   = parse_hex(root, "past",   s->past);
             s->portal = parse_hex(root, "portal", s->portal);
+            const cJSON *lay = cJSON_GetObjectItemCaseSensitive(root, "layout");
+            if (cJSON_IsNumber(lay))
+                s->layout = lay->valueint;
             cJSON_Delete(root);
         }
         g_free(data);
@@ -78,6 +82,7 @@ void settings_save(const Settings *s) {
     add_hex(root, "done",   s->done);
     add_hex(root, "past",   s->past);
     add_hex(root, "portal", s->portal);
+    cJSON_AddNumberToObject(root, "layout", s->layout);
 
     char *txt = cJSON_Print(root);
     cJSON_Delete(root);

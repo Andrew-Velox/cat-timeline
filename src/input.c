@@ -1,5 +1,6 @@
 #include "input.h"
 #include "timeline.h"
+#include "circle.h"
 #include "settings_window.h"
 #include "style.h"
 #include "window.h"
@@ -11,7 +12,10 @@
 /* ---- hit testing ------------------------------------------------------- */
 
 /* Return TRUE and the day offset when (x,y) falls within a dot's hover zone. */
-static gboolean hit_dot(double x, double y, int *out_off) {
+static gboolean hit_dot(App *app, double x, double y, int *out_off) {
+    if (app->settings.layout == LAYOUT_CIRCLE)
+        return circle_hit_dot(x, y, out_off);
+
     int off = nearest_offset(x);
     if (off < -PAST_DAYS || off > FUTURE_DAYS)
         return FALSE;
@@ -190,7 +194,12 @@ static void place_editor(App *app, GtkWidget *win, int off) {
 
     double ox, oy;
     window_widget_origin(app, &ox, &oy);   /* widget offset within the surface */
-    int x = rx + (int)(ox + dot_x(off)) - req.width / 2;
+    double ax = dot_x(off);
+    if (app->settings.layout == LAYOUT_CIRCLE) {
+        double ay;
+        circle_dot_pos(off, &ax, &ay);
+    }
+    int x = rx + (int)(ox + ax) - req.width / 2;
     int y = ry + (int)oy - req.height - 10;
 
     GdkDisplay *display = gdk_display_get_default();
@@ -368,7 +377,7 @@ static gboolean on_motion(GtkWidget *w, GdkEventMotion *e, gpointer ud) {
     app->mouse_y = ly;
 
     int off = HOVER_NONE;
-    gboolean hit = hit_dot(lx, ly, &off);
+    gboolean hit = hit_dot(app, lx, ly, &off);
     if (hit != app->has_hover || (hit && off != app->hover_offset)) {
         app->has_hover = hit;
         app->hover_offset = hit ? off : HOVER_NONE;
@@ -403,7 +412,7 @@ static gboolean on_button_press(GtkWidget *w, GdkEventButton *e, gpointer ud) {
     if (e->type == GDK_2BUTTON_PRESS && e->button == GDK_BUTTON_PRIMARY) {
         app->press_pending = FALSE;
         int off;
-        if (!hit_dot(lx, ly, &off))
+        if (!hit_dot(app, lx, ly, &off))
             settings_window_open(app);
         return TRUE;
     }
@@ -423,7 +432,7 @@ static gboolean on_button_press(GtkWidget *w, GdkEventButton *e, gpointer ud) {
         app->dragging = FALSE;
         app->press_x = e->x;
         app->press_y = e->y;
-        app->press_off = hit_dot(lx, ly, &off) ? off : HOVER_NONE;
+        app->press_off = hit_dot(app, lx, ly, &off) ? off : HOVER_NONE;
         return TRUE;
     }
     return FALSE;

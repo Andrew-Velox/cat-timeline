@@ -16,6 +16,9 @@ void window_drag_end(App *app);
 /* Queue a repaint of just the widget's rectangle. */
 void window_redraw(App *app);
 
+/* Re-apply window geometry after the layout (line <-> circle) changes. */
+void window_apply_layout(App *app);
+
 /* Top-left of the widget within its (possibly full-screen) surface, so input
  * coordinates can be translated to widget-local space. */
 void window_widget_origin(App *app, double *ox, double *oy);

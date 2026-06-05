@@ -1,5 +1,6 @@
 #include "window.h"
 #include "timeline.h"
+#include "circle.h"
 #include "cat.h"
 #include "input.h"
 
@@ -43,15 +44,15 @@ static void monitor_size(App *app, int *w, int *h) {
 static void widget_origin(App *app, double *ox, double *oy) {
     int mw, mh;
     monitor_size(app, &mw, &mh);
-    *ox = mw - s_margin_r - WIN_W;
-    *oy = mh - s_margin_b - WIN_H;
+    *ox = mw - s_margin_r - widget_w(app);
+    *oy = mh - s_margin_b - widget_h(app);
 }
 
 static void clamp_margins(App *app) {
     int mw, mh;
     monitor_size(app, &mw, &mh);
-    int max_r = mw - WIN_W;
-    int max_b = mh - WIN_H;
+    int max_r = mw - widget_w(app);
+    int max_b = mh - widget_h(app);
     if (s_margin_r < 0) s_margin_r = 0;
     if (s_margin_b < 0) s_margin_b = 0;
     if (max_r >= 0 && s_margin_r > max_r) s_margin_r = max_r;
@@ -100,7 +101,7 @@ static void set_input_region(App *app, gboolean full) {
     }
     double ox, oy;
     widget_origin(app, &ox, &oy);
-    cairo_rectangle_int_t r = { (int)ox, (int)oy, WIN_W, WIN_H };
+    cairo_rectangle_int_t r = { (int)ox, (int)oy, widget_w(app), widget_h(app) };
     cairo_region_t *reg = cairo_region_create_rectangle(&r);
     gdk_window_input_shape_combine_region(gw, reg, 0, 0);
     cairo_region_destroy(reg);
@@ -121,8 +122,8 @@ void window_drag_update(App *app, double fx, double fy) {
     monitor_size(app, &mw, &mh);
     double ox = fx - s_grab_x;
     double oy = fy - s_grab_y;
-    s_margin_r = (int)lround(mw - WIN_W - ox);
-    s_margin_b = (int)lround(mh - WIN_H - oy);
+    s_margin_r = (int)lround(mw - widget_w(app) - ox);
+    s_margin_b = (int)lround(mh - widget_h(app) - oy);
     clamp_margins(app);
     gtk_widget_queue_draw(app->area);    /* widget moved: repaint everything */
 }
@@ -136,7 +137,7 @@ void window_drag_end(App *app) {
 void window_redraw(App *app) {
     double ox, oy;
     widget_origin(app, &ox, &oy);
-    gtk_widget_queue_draw_area(app->area, (int)ox, (int)oy, WIN_W, WIN_H);
+    gtk_widget_queue_draw_area(app->area, (int)ox, (int)oy, widget_w(app), widget_h(app));
 }
 
 void window_widget_origin(App *app, double *ox, double *oy) {
@@ -167,7 +168,10 @@ static gboolean on_draw(GtkWidget *w, cairo_t *cr, gpointer ud) {
     widget_origin(app, &ox, &oy);
     cairo_translate(cr, ox, oy);
 #endif
-    timeline_draw(app, cr);
+    if (app->settings.layout == LAYOUT_CIRCLE)
+        circle_draw(app, cr);
+    else
+        timeline_draw(app, cr);
     cat_draw(app, cr);
 
     return FALSE;
@@ -190,7 +194,8 @@ static gboolean on_map(GtkWidget *win, GdkEvent *e, gpointer ud) {
 }
 #else
 /* Move the window to the bottom-right corner (fallback without layer-shell). */
-static void place_bottom_right(GtkWidget *win) {
+static void place_bottom_right(GtkWidget *win, gpointer ud) {
+    App *app = ud;
     GdkDisplay *display = gdk_display_get_default();
     GdkMonitor *mon = gdk_display_get_primary_monitor(display);
     if (!mon)
@@ -199,8 +204,8 @@ static void place_bottom_right(GtkWidget *win) {
         return;
     GdkRectangle geo;
     gdk_monitor_get_geometry(mon, &geo);
-    int x = geo.x + geo.width - WIN_W - EDGE_MARGIN;
-    int y = geo.y + geo.height - WIN_H - EDGE_MARGIN;
+    int x = geo.x + geo.width - widget_w(app) - EDGE_MARGIN;
+    int y = geo.y + geo.height - widget_h(app) - EDGE_MARGIN;
     gtk_window_move(GTK_WINDOW(win), x, y);
 }
 #endif
@@ -242,14 +247,30 @@ void window_create(App *app) {
     gtk_window_set_skip_taskbar_hint(GTK_WINDOW(win), TRUE);
     gtk_window_set_skip_pager_hint(GTK_WINDOW(win), TRUE);
     gtk_window_set_type_hint(GTK_WINDOW(win), GDK_WINDOW_TYPE_HINT_UTILITY);
-    gtk_window_set_default_size(GTK_WINDOW(win), WIN_W, WIN_H);
-    gtk_widget_set_size_request(win, WIN_W, WIN_H);
-    gtk_widget_set_size_request(area, WIN_W, WIN_H);
-    g_signal_connect(win, "realize", G_CALLBACK(place_bottom_right), NULL);
+    gtk_window_set_default_size(GTK_WINDOW(win), widget_w(app), widget_h(app));
+    gtk_widget_set_size_request(win, widget_w(app), widget_h(app));
+    gtk_widget_set_size_request(area, widget_w(app), widget_h(app));
+    g_signal_connect(win, "realize", G_CALLBACK(place_bottom_right), app);
 #endif
 
     g_signal_connect(area, "draw", G_CALLBACK(on_draw), app);
     g_signal_connect(win, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
     input_attach(app);
+}
+
+/* Re-apply geometry after the layout (line <-> circle) changes: the widget
+ * rectangle resizes, so refresh the input region / window size and repaint. */
+void window_apply_layout(App *app) {
+#ifdef HAVE_LAYER_SHELL
+    clamp_margins(app);
+    set_input_region(app, FALSE);
+    gtk_widget_queue_draw(app->area);   /* full surface: clear the old rect */
+#else
+    gtk_widget_set_size_request(app->window, widget_w(app), widget_h(app));
+    gtk_widget_set_size_request(app->area, widget_w(app), widget_h(app));
+    gtk_window_resize(GTK_WINDOW(app->window), widget_w(app), widget_h(app));
+    place_bottom_right(app->window, app);
+    gtk_widget_queue_draw(app->area);
+#endif
 }
