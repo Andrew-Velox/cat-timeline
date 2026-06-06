@@ -309,25 +309,69 @@ static void on_calendar_changed(int y, int m, int d, gpointer ud) {
 
 /* ---- appearance section ------------------------------------------------ */
 
-static void on_color_set(GtkColorButton *btn, gpointer ud) {
+/* Draw a colour swatch as a filled circle (a real circle, unlike the squished
+ * GtkColorButton). The bound Settings field is passed as user-data. */
+static gboolean swatch_draw(GtkWidget *w, cairo_t *cr, gpointer ud) {
+    unsigned int *field = ud;
+    int wd = gtk_widget_get_allocated_width(w);
+    int ht = gtk_widget_get_allocated_height(w);
+    double d = (wd < ht ? wd : ht) - 2.0;
+    double cx = wd / 2.0, cy = ht / 2.0, r = d / 2.0;
+    cairo_arc(cr, cx, cy, r, 0, 2 * M_PI);
+    set_hex(cr, *field, 1.0);
+    cairo_fill_preserve(cr);
+    set_hex(cr, 0x2a2f38, 1.0);
+    cairo_set_line_width(cr, 1.0);
+    cairo_stroke(cr);
+    return FALSE;
+}
+
+/* Live-apply the chooser's colour to its bound field as the user picks. */
+static void on_chooser_rgba(GObject *ch, GParamSpec *ps, gpointer ud) {
+    (void)ps;
     Ctx *ctx = ud;
-    unsigned int *field = g_object_get_data(G_OBJECT(btn), "field");
+    unsigned int *field = g_object_get_data(ch, "field");
+    GtkWidget *area = g_object_get_data(ch, "area");
     GdkRGBA c;
-    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &c);
+    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(ch), &c);
     *field = rgba_to_hex(&c);
+    gtk_widget_queue_draw(area);
     settings_save(&ctx->app->settings);
     gtk_widget_queue_draw(ctx->app->area);
+}
+
+/* Click a swatch -> a colour chooser inside a popover. As part of the settings
+ * window's own surface it can't get trapped behind it, and it dismisses on an
+ * outside click. */
+static void on_swatch_clicked(GtkButton *b, gpointer ud) {
+    Ctx *ctx = ud;
+    unsigned int *field = g_object_get_data(G_OBJECT(b), "field");
+    GtkWidget *area = g_object_get_data(G_OBJECT(b), "area");
+
+    GtkWidget *pop = gtk_popover_new(GTK_WIDGET(b));
+    gtk_popover_set_position(GTK_POPOVER(pop), GTK_POS_LEFT);
+
+    GtkWidget *ch = gtk_color_chooser_widget_new();
+    gtk_color_chooser_set_use_alpha(GTK_COLOR_CHOOSER(ch), FALSE);
+    GdkRGBA c;
+    hex_to_rgba(*field, &c);
+    gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(ch), &c);
+    g_object_set_data(G_OBJECT(ch), "field", field);
+    g_object_set_data(G_OBJECT(ch), "area", area);
+    g_signal_connect(ch, "notify::rgba", G_CALLBACK(on_chooser_rgba), ctx);
+
+    gtk_container_add(GTK_CONTAINER(pop), ch);
+    gtk_widget_show_all(ch);
+    g_signal_connect(pop, "closed", G_CALLBACK(gtk_widget_destroy), NULL);
+    gtk_popover_popup(GTK_POPOVER(pop));
 }
 
 static void on_reset(GtkButton *b, gpointer ud) {
     (void)b;
     Ctx *ctx = ud;
     settings_defaults(&ctx->app->settings);
-    for (int i = 0; i < ctx->ncolors; i++) {
-        GdkRGBA c;
-        hex_to_rgba(*ctx->cfield[i], &c);
-        gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(ctx->cbtn[i]), &c);
-    }
+    for (int i = 0; i < ctx->ncolors; i++)
+        gtk_widget_queue_draw(ctx->cbtn[i]);   /* cbtn[i] is the swatch area */
     settings_save(&ctx->app->settings);
     gtk_widget_queue_draw(ctx->app->area);
 }
@@ -349,17 +393,25 @@ static void add_color_row(Ctx *ctx, GtkWidget *grid, int idx, const char *name,
     gtk_widget_set_halign(label, GTK_ALIGN_START);
     gtk_widget_set_hexpand(label, TRUE);
 
-    GdkRGBA c;
-    hex_to_rgba(*field, &c);
-    GtkWidget *btn = gtk_color_button_new_with_rgba(&c);
-    gtk_color_chooser_set_use_alpha(GTK_COLOR_CHOOSER(btn), FALSE);
+    /* A flat button holding a Cairo-drawn circular swatch. */
+    GtkWidget *area = gtk_drawing_area_new();
+    gtk_widget_set_size_request(area, 26, 26);
+    g_signal_connect(area, "draw", G_CALLBACK(swatch_draw), field);
+
+    GtkWidget *btn = gtk_button_new();
+    gtk_button_set_relief(GTK_BUTTON(btn), GTK_RELIEF_NONE);
+    style_class(btn, "swatch-btn");
+    gtk_container_add(GTK_CONTAINER(btn), area);
+    gtk_widget_set_halign(btn, GTK_ALIGN_END);
+    gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
     g_object_set_data(G_OBJECT(btn), "field", field);
-    g_signal_connect(btn, "color-set", G_CALLBACK(on_color_set), ctx);
+    g_object_set_data(G_OBJECT(btn), "area", area);
+    g_signal_connect(btn, "clicked", G_CALLBACK(on_swatch_clicked), ctx);
 
     gtk_grid_attach(GTK_GRID(grid), label, 0, idx, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), btn,   1, idx, 1, 1);
 
-    ctx->cbtn[idx]   = btn;
+    ctx->cbtn[idx]   = area;          /* store the swatch area for reset redraw */
     ctx->cfield[idx] = field;
 }
 
@@ -414,8 +466,8 @@ static void place_near_widget(GtkWidget *win) {
 /* A vertical icon-over-label widget for a left-rail button. */
 static GtkWidget *nav_label(const char *icon, const char *text) {
     GtkWidget *b = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
-    GtkWidget *img = gtk_image_new_from_icon_name(icon, GTK_ICON_SIZE_MENU);
-    gtk_image_set_pixel_size(GTK_IMAGE(img), 14);
+    GtkWidget *img = gtk_image_new_from_icon_name(icon, GTK_ICON_SIZE_DND);
+    gtk_image_set_pixel_size(GTK_IMAGE(img), 22);
     GtkWidget *lbl = gtk_label_new(text);
     gtk_box_pack_start(GTK_BOX(b), img, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(b), lbl, FALSE, FALSE, 0);
@@ -474,7 +526,7 @@ void settings_window_open(App *app) {
     gtk_window_set_skip_pager_hint(GTK_WINDOW(win), TRUE);
     gtk_window_set_type_hint(GTK_WINDOW(win), GDK_WINDOW_TYPE_HINT_UTILITY);
     gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_NONE);
-    gtk_window_set_default_size(GTK_WINDOW(win), 480, 440);
+    gtk_window_set_default_size(GTK_WINDOW(win), 480, 580);
     g_signal_connect(win, "key-press-event", G_CALLBACK(on_key_press), NULL);
 
     Ctx *ctx = g_new0(Ctx, 1);
@@ -485,7 +537,7 @@ void settings_window_open(App *app) {
     style_class(root, "settings");
     style_class(root, "taskpanel");
     style_class(root, "tp-box");
-    gtk_widget_set_size_request(root, 470, -1);   /* wide box with a left rail */
+    gtk_widget_set_size_request(root, 710, -1);   /* wide box with a left rail */
     gtk_container_add(GTK_CONTAINER(win), root);
 
     /* Header: title (left) + × close (right). */
@@ -506,7 +558,7 @@ void settings_window_open(App *app) {
     gtk_box_pack_start(GTK_BOX(root), body, TRUE, TRUE, 0);
 
     GtkWidget *rail = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-    gtk_widget_set_valign(rail, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(rail, GTK_ALIGN_START);
     GtkWidget *main_stack = gtk_stack_new();
     gtk_stack_set_transition_type(GTK_STACK(main_stack),
                                   GTK_STACK_TRANSITION_TYPE_CROSSFADE);
@@ -522,7 +574,7 @@ void settings_window_open(App *app) {
 
     /* Each page scrolls internally; a sensible minimum keeps the default size
      * compact, while vexpand lets pages fill the window when it's enlarged. */
-    const int PAGE_H = 300;
+    const int PAGE_H = 400;
     GtkWidget *tasks_vp = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(tasks_vp),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -558,7 +610,7 @@ void settings_window_open(App *app) {
     GtkWidget *uf_scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(uf_scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(uf_scroll), 260);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(uf_scroll), 300);
     gtk_widget_set_vexpand(uf_scroll, TRUE);
     ctx->home_unfin = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_add(GTK_CONTAINER(uf_scroll), ctx->home_unfin);
@@ -566,7 +618,7 @@ void settings_window_open(App *app) {
     GtkWidget *dn_scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(dn_scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(dn_scroll), 260);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(dn_scroll), 300);
     gtk_widget_set_vexpand(dn_scroll, TRUE);
     ctx->home_done = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_add(GTK_CONTAINER(dn_scroll), ctx->home_done);

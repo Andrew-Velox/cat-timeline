@@ -127,11 +127,13 @@ static gboolean cal_draw(GtkWidget *w, cairo_t *cr, gpointer ud) {
 
         if (is_sel) {
             set_hex(cr, UI_ACCENT, 1.0);
+            cairo_new_sub_path(cr);
             cairo_arc(cr, cx, cy, rad, 0, 2 * M_PI);
             cairo_fill(cr);
         } else if (is_today) {
             set_hex(cr, UI_ACCENT, 1.0);
             cairo_set_line_width(cr, 1.4);
+            cairo_new_sub_path(cr);
             cairo_arc(cr, cx, cy, rad, 0, 2 * M_PI);
             cairo_stroke(cr);
         }
@@ -152,6 +154,7 @@ static gboolean cal_draw(GtkWidget *w, cairo_t *cr, gpointer ud) {
         /* Task dot under the number (hidden when selected to avoid clutter). */
         if (!is_sel && day_has_tasks(c, c->view_y, c->view_m, d)) {
             set_hex(cr, c->app->settings.task, 1.0);
+            cairo_new_sub_path(cr);
             cairo_arc(cr, cx, cy + rad - 1.0, 1.6, 0, 2 * M_PI);
             cairo_fill(cr);
         }
