@@ -51,6 +51,16 @@ A quick walkthrough of the widget and its settings:
 
 ---
 
+## 📱 Mobile — coming soon
+
+The same running cat is heading to your phone — your timeline and tasks, right on the home screen.
+
+<div align="center">
+<img src="docs/cat-timeline-app.gif" alt="cat-timeline mobile app preview" width="260">
+</div>
+
+---
+
 ## 🚀 Quick start
 
 **Arch**
