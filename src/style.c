@@ -74,6 +74,20 @@ void style_ensure(App *app) {
         "  color:#8b9099; border:none; background:none; }"
         ".settings notebook > header tabs tab:checked { color:#f0f1f3;"
         "  box-shadow:inset 0 -2px #3da9fc; }"
+        /* left rail: stacked icon+label pills instead of underlined tabs */
+        ".settings notebook > header.left { background:transparent; border:none;"
+        "  padding:2px; margin-right:6px; }"
+        ".settings notebook > header.left tabs tab { padding:9px 8px; margin:3px 0;"
+        "  border-radius:11px; box-shadow:none; color:#8b9099; }"
+        ".settings notebook > header.left tabs tab:checked { color:#f0f1f3;"
+        "  background-color:#262a32; box-shadow:none; }"
+        ".settings notebook > header.left tabs tab:hover { background-color:#1d2129; }"
+        ".settings stackswitcher button { background:none; border:none;"
+        "  box-shadow:none; outline:none; color:#8b9099; padding:6px 16px;"
+        "  min-height:0; font-weight:bold; }"
+        ".settings stackswitcher button:checked { color:#f0f1f3;"
+        "  box-shadow:inset 0 -2px #3da9fc; }"
+        ".tp-emptyicon { color:#3a3f48; }"
         /* ---- calendar ---- */
         ".settings calendar { background-color:#16181d; color:#e9eaed;"
         "  border:1px solid #23262e; border-radius:14px; padding:8px; font-size:12px; }"
@@ -82,7 +96,7 @@ void style_ensure(App *app) {
         ".settings calendar.highlight { color:#8b9099; }"
         ".settings calendar:indeterminate { color:#4b4f57; }"
         ".settings calendar:selected { background-color:#3da9fc; color:#08151f;"
-        "  font-weight:bold; border-radius:50%%; }",
+        "  font-weight:bold; border-radius:9px; }",
         done);
 
     if (!prov) {

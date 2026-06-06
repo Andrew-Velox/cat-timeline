@@ -3,6 +3,7 @@
 #include "tasks.h"
 #include "style.h"
 #include "window.h"
+#include "calwidget.h"
 
 #include <gdk/gdkkeysyms.h>
 #include <stdio.h>
@@ -13,12 +14,12 @@
 /* Per-window state shared between the calendar and task-list callbacks. */
 typedef struct {
     App         *app;
-    GtkCalendar *cal;        /* month view, marks days that have tasks  */
+    GtkWidget   *cal;        /* custom Cairo month calendar             */
     GtkWidget   *day_label;  /* selected-day header (friendly date)     */
     GtkWidget   *list;       /* vbox holding one row per task           */
     GtkWidget   *entry;      /* new-task entry for the selected day     */
-    GtkWidget   *home_list;  /* Home tab: all tasks, grouped by day     */
-    GtkWidget   *home_count; /* Home tab: "N pending tasks" subtitle    */
+    GtkWidget   *home_unfin; /* Home tab: pending tasks (Unfinished)    */
+    GtkWidget   *home_done;  /* Home tab: completed tasks (Done)        */
     GtkWidget   *day_count;  /* Tasks tab: "X of Y done" footer         */
     GtkWidget   *prog;       /* Tasks tab: completion progress bar      */
 
@@ -47,24 +48,14 @@ static unsigned int rgba_to_hex(const GdkRGBA *c) {
 
 /* The "YYYY-MM-DD" string for the calendar's currently selected day. */
 static void selected_date(Ctx *ctx, char *out11) {
-    guint y, m, d;
-    gtk_calendar_get_date(ctx->cal, &y, &m, &d);   /* m is 0-based */
-    snprintf(out11, DATE_LEN, "%04u-%02u-%02u", y, m + 1, d);
+    int y, m, d;
+    cal_widget_get_selected(ctx->cal, &y, &m, &d);
+    snprintf(out11, DATE_LEN, "%04d-%02d-%02d", y, m, d);
 }
 
-/* Mark every day in the displayed month that has at least one task. */
+/* Repaint the calendar so its task dots reflect the current store. */
 static void mark_task_days(Ctx *ctx) {
-    guint y, m, d;
-    gtk_calendar_get_date(ctx->cal, &y, &m, &d);
-    gtk_calendar_clear_marks(ctx->cal);
-
-    TaskStore *s = &ctx->app->store;
-    for (int i = 0; i < s->count; i++) {
-        int yy, mm, dd;
-        if (sscanf(s->days[i].date, "%d-%d-%d", &yy, &mm, &dd) == 3 &&
-            yy == (int)y && mm == (int)m + 1 && s->days[i].count > 0)
-            gtk_calendar_mark_day(ctx->cal, dd);
-    }
+    cal_widget_refresh(ctx->cal);
 }
 
 /* TRUE when the "YYYY-MM-DD" string is today's date. */
@@ -234,69 +225,85 @@ static int cmp_day_ptr(const void *a, const void *b) {
     return strcmp((*pa)->date, (*pb)->date);
 }
 
-static void build_home_list(Ctx *ctx) {
-    if (!ctx->home_list)
-        return;
-    clear_box(ctx->home_list);
+/* Fill one Home list with tasks whose done-state matches `want_done`, grouped
+ * into a card per day. Shows a centred icon + message when there are none. */
+static void fill_grouped(Ctx *ctx, GtkWidget *box, gboolean want_done,
+                         const char *icon, const char *empty_text) {
+    clear_box(box);
 
     TaskStore *s = &ctx->app->store;
     DayTasks **days = g_new(DayTasks *, s->count > 0 ? s->count : 1);
-    int m = 0, pending = 0;
-    for (int i = 0; i < s->count; i++) {
+    int m = 0;
+    for (int i = 0; i < s->count; i++)
         if (s->days[i].count > 0)
             days[m++] = &s->days[i];
-        for (int j = 0; j < s->days[i].count; j++)
-            if (!s->days[i].tasks[j].done) pending++;
-    }
     qsort(days, m, sizeof(DayTasks *), cmp_day_ptr);
 
-    char sub[40];
-    g_snprintf(sub, sizeof sub, "%d pending task%s", pending, pending == 1 ? "" : "s");
-    gtk_label_set_text(GTK_LABEL(ctx->home_count), sub);
+    gboolean any = FALSE;
+    for (int i = 0; i < m; i++) {
+        DayTasks *d = days[i];
+        int match = 0;
+        for (int j = 0; j < d->count; j++)
+            if ((d->tasks[j].done ? TRUE : FALSE) == want_done) match++;
+        if (!match)
+            continue;
+        any = TRUE;
 
-    if (m == 0) {
-        GtkWidget *empty = gtk_label_new("No tasks yet.\nAdd some from the Tasks tab.");
-        gtk_label_set_justify(GTK_LABEL(empty), GTK_JUSTIFY_CENTER);
-        gtk_widget_set_halign(empty, GTK_ALIGN_CENTER);
-        gtk_widget_set_margin_top(empty, 24);
-        style_class(empty, "tp-empty");
-        gtk_box_pack_start(GTK_BOX(ctx->home_list), empty, FALSE, FALSE, 0);
-    } else {
-        for (int i = 0; i < m; i++) {
-            DayTasks *d = days[i];
+        GtkWidget *card = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+        style_class(card, "tp-card");
 
-            /* One rounded card per day: an uppercase header then its rows. */
-            GtkWidget *card = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-            style_class(card, "tp-card");
+        char nice[32], head[48];
+        date_pretty(d->date, nice, sizeof nice);
+        if (date_is_today(d->date))
+            g_snprintf(head, sizeof head, "TODAY · %s", nice);
+        else
+            g_strlcpy(head, nice, sizeof head);
+        char *up = g_ascii_strup(head, -1);
+        GtkWidget *hdr = gtk_label_new(up);
+        g_free(up);
+        gtk_widget_set_halign(hdr, GTK_ALIGN_START);
+        style_class(hdr, "tp-date");
+        gtk_box_pack_start(GTK_BOX(card), hdr, FALSE, FALSE, 0);
 
-            char nice[32], head[48];
-            date_pretty(d->date, nice, sizeof nice);
-            if (date_is_today(d->date))
-                g_snprintf(head, sizeof head, "TODAY · %s", nice);
-            else
-                g_strlcpy(head, nice, sizeof head);
-            char *up = g_ascii_strup(head, -1);
-            GtkWidget *hdr = gtk_label_new(up);
-            g_free(up);
-            gtk_widget_set_halign(hdr, GTK_ALIGN_START);
-            style_class(hdr, "tp-date");
-            gtk_box_pack_start(GTK_BOX(card), hdr, FALSE, FALSE, 0);
-
-            for (int j = 0; j < d->count; j++)
+        for (int j = 0; j < d->count; j++)
+            if ((d->tasks[j].done ? TRUE : FALSE) == want_done)
                 gtk_box_pack_start(GTK_BOX(card),
                                    make_task_row(ctx, d->date, &d->tasks[j]), FALSE, FALSE, 0);
 
-            gtk_box_pack_start(GTK_BOX(ctx->home_list), card, FALSE, FALSE, 0);
-        }
+        gtk_box_pack_start(GTK_BOX(box), card, FALSE, FALSE, 0);
     }
     g_free(days);
-    gtk_widget_show_all(ctx->home_list);
+
+    if (!any) {
+        GtkWidget *e = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+        gtk_widget_set_valign(e, GTK_ALIGN_CENTER);
+        gtk_widget_set_vexpand(e, TRUE);
+        GtkWidget *img = gtk_image_new_from_icon_name(icon, GTK_ICON_SIZE_DIALOG);
+        gtk_image_set_pixel_size(GTK_IMAGE(img), 44);
+        style_class(img, "tp-emptyicon");
+        gtk_widget_set_halign(img, GTK_ALIGN_CENTER);
+        GtkWidget *lbl = gtk_label_new(empty_text);
+        style_class(lbl, "tp-empty");
+        gtk_widget_set_halign(lbl, GTK_ALIGN_CENTER);
+        gtk_box_pack_start(GTK_BOX(e), img, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(e), lbl, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), e, TRUE, TRUE, 0);
+    }
+    gtk_widget_show_all(box);
 }
 
-static void on_calendar_changed(GtkCalendar *cal, gpointer ud) {
-    (void)cal;
+static void build_home_list(Ctx *ctx) {
+    if (!ctx->home_unfin)
+        return;
+    fill_grouped(ctx, ctx->home_unfin, FALSE, "view-list-symbolic",
+                 "No unfinished tasks");
+    fill_grouped(ctx, ctx->home_done, TRUE, "object-select-symbolic",
+                 "Finished tasks will go here");
+}
+
+static void on_calendar_changed(int y, int m, int d, gpointer ud) {
+    (void)y; (void)m; (void)d;
     Ctx *ctx = ud;
-    mark_task_days(ctx);
     refresh_task_list(ctx);
 }
 
@@ -404,6 +411,19 @@ static void place_near_widget(GtkWidget *win) {
     gtk_window_move(GTK_WINDOW(win), x, y);
 }
 
+/* A vertical icon-over-label widget for a left-rail notebook tab. */
+static GtkWidget *nav_label(const char *icon, const char *text) {
+    GtkWidget *b = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
+    GtkWidget *img = gtk_image_new_from_icon_name(icon, GTK_ICON_SIZE_BUTTON);
+    gtk_image_set_pixel_size(GTK_IMAGE(img), 20);
+    GtkWidget *lbl = gtk_label_new(text);
+    gtk_box_pack_start(GTK_BOX(b), img, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(b), lbl, FALSE, FALSE, 0);
+    gtk_widget_set_halign(b, GTK_ALIGN_CENTER);
+    gtk_widget_show_all(b);
+    return b;
+}
+
 void settings_window_open(App *app) {
     if (app->settings_win) {           /* already open: just focus it */
         gtk_window_present(GTK_WINDOW(app->settings_win));
@@ -424,7 +444,7 @@ void settings_window_open(App *app) {
     gtk_window_set_skip_pager_hint(GTK_WINDOW(win), TRUE);
     gtk_window_set_type_hint(GTK_WINDOW(win), GDK_WINDOW_TYPE_HINT_UTILITY);
     gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_NONE);
-    gtk_window_set_default_size(GTK_WINDOW(win), 320, 360);
+    gtk_window_set_default_size(GTK_WINDOW(win), 480, 1);
     g_signal_connect(win, "key-press-event", G_CALLBACK(on_key_press), NULL);
 
     Ctx *ctx = g_new0(Ctx, 1);
@@ -435,6 +455,7 @@ void settings_window_open(App *app) {
     style_class(root, "settings");
     style_class(root, "taskpanel");
     style_class(root, "tp-box");
+    gtk_widget_set_size_request(root, 470, -1);   /* wide box with a left rail */
     gtk_container_add(GTK_CONTAINER(win), root);
 
     /* Header: title (left) + × close (right). */
@@ -451,6 +472,7 @@ void settings_window_open(App *app) {
     gtk_box_pack_start(GTK_BOX(root), head, FALSE, FALSE, 0);
 
     GtkWidget *tabs = gtk_notebook_new();
+    gtk_notebook_set_tab_pos(GTK_NOTEBOOK(tabs), GTK_POS_LEFT);
     gtk_box_pack_start(GTK_BOX(root), tabs, TRUE, TRUE, 0);
 
     GtkWidget *page_home = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
@@ -460,25 +482,59 @@ void settings_window_open(App *app) {
     GtkWidget *page_appearance = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_container_set_border_width(GTK_CONTAINER(page_appearance), 8);
 
-    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), page_home, gtk_label_new("Home"));
-    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), page_tasks, gtk_label_new("Tasks"));
-    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), page_appearance, gtk_label_new("Appearance"));
-
-    /* --- Home: all tasks, grouped by day in date order --- */
-    ctx->home_count = gtk_label_new("");
-    style_class(ctx->home_count, "tp-sub");
-    gtk_widget_set_halign(ctx->home_count, GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(page_home), ctx->home_count, FALSE, FALSE, 0);
-
-    GtkWidget *home_scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(home_scroll),
+    /* Fixed-height viewports keep every page (and the window) a compact box;
+     * pages that need more room scroll internally instead of growing it. */
+    const int PAGE_H = 330;
+    GtkWidget *tasks_vp = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(tasks_vp),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(home_scroll), 240);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(home_scroll), 340);
-    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(home_scroll), TRUE);
-    ctx->home_list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    gtk_container_add(GTK_CONTAINER(home_scroll), ctx->home_list);
-    gtk_box_pack_start(GTK_BOX(page_home), home_scroll, TRUE, TRUE, 0);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(tasks_vp), PAGE_H);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(tasks_vp), PAGE_H);
+    gtk_container_add(GTK_CONTAINER(tasks_vp), page_tasks);
+
+    GtkWidget *appear_vp = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(appear_vp),
+                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(appear_vp), PAGE_H);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(appear_vp), PAGE_H);
+    gtk_container_add(GTK_CONTAINER(appear_vp), page_appearance);
+
+    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), page_home,
+                             nav_label("view-list-symbolic", "Home"));
+    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), tasks_vp,
+                             nav_label("x-office-calendar-symbolic", "Tasks"));
+    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), appear_vp,
+                             nav_label("applications-graphics-symbolic", "Appearance"));
+
+    /* --- Home: Unfinished / Done tabs --- */
+    GtkWidget *home_stack = gtk_stack_new();
+    gtk_stack_set_transition_type(GTK_STACK(home_stack),
+                                  GTK_STACK_TRANSITION_TYPE_CROSSFADE);
+
+    GtkWidget *uf_scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(uf_scroll),
+                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(uf_scroll), 292);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(uf_scroll), 292);
+    ctx->home_unfin = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_add(GTK_CONTAINER(uf_scroll), ctx->home_unfin);
+
+    GtkWidget *dn_scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(dn_scroll),
+                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(dn_scroll), 292);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(dn_scroll), 292);
+    ctx->home_done = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_add(GTK_CONTAINER(dn_scroll), ctx->home_done);
+
+    gtk_stack_add_titled(GTK_STACK(home_stack), uf_scroll, "unfinished", "Unfinished");
+    gtk_stack_add_titled(GTK_STACK(home_stack), dn_scroll, "done", "Done");
+
+    GtkWidget *sw = gtk_stack_switcher_new();
+    gtk_stack_switcher_set_stack(GTK_STACK_SWITCHER(sw), GTK_STACK(home_stack));
+    gtk_widget_set_halign(sw, GTK_ALIGN_CENTER);
+    gtk_box_pack_start(GTK_BOX(page_home), sw, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(page_home), home_stack, TRUE, TRUE, 0);
 
     /* --- Tasks: calendar + selected-day editor --- */
     GtkWidget *month = gtk_label_new("THIS MONTH");
@@ -486,11 +542,8 @@ void settings_window_open(App *app) {
     gtk_widget_set_halign(month, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(page_tasks), month, FALSE, FALSE, 0);
 
-    GtkWidget *cal = gtk_calendar_new();
-    ctx->cal = GTK_CALENDAR(cal);
-    gtk_calendar_set_display_options(GTK_CALENDAR(cal),
-        GTK_CALENDAR_SHOW_HEADING | GTK_CALENDAR_SHOW_DAY_NAMES);
-    gtk_box_pack_start(GTK_BOX(page_tasks), cal, FALSE, FALSE, 0);
+    ctx->cal = cal_widget_new(app, on_calendar_changed, ctx);
+    gtk_box_pack_start(GTK_BOX(page_tasks), ctx->cal, FALSE, FALSE, 0);
 
     GtkWidget *seld = gtk_label_new("SELECTED DAY");
     style_class(seld, "tp-sub");
@@ -531,15 +584,9 @@ void settings_window_open(App *app) {
     gtk_widget_set_no_show_all(ctx->prog, TRUE);   /* visibility set in refresh */
     gtk_box_pack_start(GTK_BOX(page_tasks), ctx->prog, FALSE, FALSE, 0);
 
-    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
-                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(scroll), 70);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scroll), 150);
-    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(scroll), TRUE);
+    /* Task rows pack directly into the page; the page itself scrolls. */
     ctx->list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    gtk_container_add(GTK_CONTAINER(scroll), ctx->list);
-    gtk_box_pack_start(GTK_BOX(page_tasks), scroll, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(page_tasks), ctx->list, FALSE, FALSE, 0);
 
     /* --- Appearance --- */
     GtkWidget *grid = gtk_grid_new();
@@ -578,12 +625,10 @@ void settings_window_open(App *app) {
 
     GtkWidget *reset = gtk_button_new_with_label("Reset to defaults");
     style_class(reset, "tp-reset");
+    gtk_widget_set_margin_top(reset, 6);
     g_signal_connect(reset, "clicked", G_CALLBACK(on_reset), ctx);
-    gtk_box_pack_end(GTK_BOX(root), reset, FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(page_appearance), reset, FALSE, FALSE, 0);
 
-    /* Wire calendar updates and populate the initial day. */
-    g_signal_connect(cal, "day-selected", G_CALLBACK(on_calendar_changed), ctx);
-    g_signal_connect(cal, "month-changed", G_CALLBACK(on_calendar_changed), ctx);
     g_signal_connect(win, "destroy", G_CALLBACK(on_destroy), app);
 
     mark_task_days(ctx);

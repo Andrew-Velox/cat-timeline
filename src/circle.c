@@ -54,76 +54,81 @@ gboolean circle_hit_dot(double x, double y, int *out_off) {
     return FALSE;
 }
 
-/* The glowing ring arc (open at the top), drawn as layered strokes for glow. */
+/* The accent-coloured ring arc (open at the top). */
 static void draw_ring(App *app, cairo_t *cr) {
     double r, g, b;
     hex_rgb(app->settings.accent, &r, &g, &b);
-    const double widths[] = {7.0, 3.5, 1.6};
-    const double alphas[] = {0.16, 0.4, 1.0};
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-    for (int i = 0; i < 3; i++) {
-        cairo_new_path(cr);
-        cairo_set_source_rgba(cr, r, g, b, alphas[i]);
-        cairo_set_line_width(cr, widths[i]);
-        cairo_arc(cr, RING_CX, RING_CY, RING_R, portal_future_ang(), portal_past_ang());
-        cairo_stroke(cr);
-    }
+    cairo_set_source_rgba(cr, r, g, b, 1.0);
+    cairo_set_line_width(cr, 2.0);
+    cairo_arc(cr, RING_CX, RING_CY, RING_R, portal_future_ang(), portal_past_ang());
+    cairo_stroke(cr);
 }
 
-/* A sparkling portal at one end of the gap (additive, gently breathing). */
-static void draw_portal(App *app, cairo_t *cr, double a) {
-    double px = RING_CX + RING_R * cos(a);
-    double py = RING_CY + RING_R * sin(a);
-    double t = app->tick / 10.0;
-    double pulse = 0.5 + 0.5 * sin(t * 2.2);
+// /* A sparkling portal at one end of the gap (additive, gently breathing). */
+// static void draw_portal(App *app, cairo_t *cr, double a) {
+//     double px = RING_CX + RING_R * cos(a);
+//     double py = RING_CY + RING_R * sin(a);
+//     double t = app->tick / 10.0;
+//     double pulse = 0.5 + 0.5 * sin(t * 2.2);
 
-    double r, g, b;
-    hex_rgb(hex_lighten(app->settings.portal, 0.35), &r, &g, &b);
-    double rad = 6.0 + 2.0 * pulse;
+//     double r, g, b;
+//     hex_rgb(hex_lighten(app->settings.portal, 0.35), &r, &g, &b);
+//     double rad = 6.0 + 2.0 * pulse;
 
-    cairo_save(cr);
-    cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
-    cairo_pattern_t *grad = cairo_pattern_create_radial(px, py, 0, px, py, rad);
-    cairo_pattern_add_color_stop_rgba(grad, 0.0, r, g, b, 0.70 + 0.2 * pulse);
-    cairo_pattern_add_color_stop_rgba(grad, 0.4, r, g, b, 0.30);
-    cairo_pattern_add_color_stop_rgba(grad, 1.0, r, g, b, 0.0);
-    cairo_set_source(cr, grad);
-    cairo_arc(cr, px, py, rad, 0, 2 * M_PI);
-    cairo_fill(cr);
-    cairo_pattern_destroy(grad);
+//     cairo_save(cr);
+//     cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
+//     cairo_pattern_t *grad = cairo_pattern_create_radial(px, py, 0, px, py, rad);
+//     cairo_pattern_add_color_stop_rgba(grad, 0.0, r, g, b, 0.70 + 0.2 * pulse);
+//     cairo_pattern_add_color_stop_rgba(grad, 0.4, r, g, b, 0.30);
+//     cairo_pattern_add_color_stop_rgba(grad, 1.0, r, g, b, 0.0);
+//     cairo_set_source(cr, grad);
+//     cairo_arc(cr, px, py, rad, 0, 2 * M_PI);
+//     cairo_fill(cr);
+//     cairo_pattern_destroy(grad);
 
-    set_hex(cr, hex_lighten(app->settings.portal, 0.6), 0.9);
-    cairo_arc(cr, px, py, 1.6, 0, 2 * M_PI);
-    cairo_fill(cr);
-    cairo_restore(cr);
-}
+//     set_hex(cr, hex_lighten(app->settings.portal, 0.6), 0.9);
+//     cairo_arc(cr, px, py, 1.6, 0, 2 * M_PI);
+//     cairo_fill(cr);
+//     cairo_restore(cr);
+// }
 
 /* Task ticks fanned radially outward from a day's dot. */
 static void draw_ticks(App *app, cairo_t *cr, DayTasks *d, int offset,
                        double a, double fade) {
     if (!d || d->count == 0)
         return;
-    int shown = d->count > 6 ? 6 : d->count;
+
+    /* Only pending tasks are shown; completed ones drop off the widget. */
+    int npend = 0;
+    for (int i = 0; i < d->count; i++)
+        if (!d->tasks[i].done) npend++;
+    if (npend == 0)
+        return;
+
+    int shown = npend > 6 ? 6 : npend;
     const double base = RING_R + 4.0;    /* inner end, just outside the ring */
     const double h = 7.0;                /* tick length                      */
     const double da = 4.5 * M_PI / 180.0;/* angular gap between ticks         */
     double a0 = a - (shown - 1) * da / 2.0;
 
+    unsigned int col;
+    double glow = 0.0;
+    if (offset < 0) {
+        col = app->settings.past;
+    } else if (offset == 0) {
+        col = hex_lighten(app->settings.task, 0.2);
+    } else {
+        col = app->settings.task;
+        glow = 1.0;
+    }
+
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-    for (int i = 0; i < shown; i++) {
-        double ai = a0 + i * da;
-        unsigned int col;
-        double glow = 0.0;
-        if (d->tasks[i].done) {
-            col = app->settings.done;
-        } else if (offset < 0) {
-            col = app->settings.past;
-        } else if (offset == 0) {
-            col = hex_lighten(app->settings.task, 0.2);
-        } else {
-            col = app->settings.task;
-            glow = 1.0;
-        }
+    int drawn = 0;
+    for (int i = 0; i < d->count && drawn < shown; i++) {
+        if (d->tasks[i].done)
+            continue;
+        double ai = a0 + drawn * da;
         double x1 = RING_CX + base * cos(ai),       y1 = RING_CY + base * sin(ai);
         double x2 = RING_CX + (base + h) * cos(ai), y2 = RING_CY + (base + h) * sin(ai);
         if (glow > 0.0) {
@@ -138,11 +143,12 @@ static void draw_ticks(App *app, cairo_t *cr, DayTasks *d, int offset,
         cairo_move_to(cr, x1, y1);
         cairo_line_to(cr, x2, y2);
         cairo_stroke(cr);
+        drawn++;
     }
 
-    if (d->count > 6) {
+    if (npend > 6) {
         char buf[16];
-        snprintf(buf, sizeof(buf), "+%d", d->count - 6);
+        snprintf(buf, sizeof(buf), "+%d", npend - 6);
         double lx = RING_CX + (base + h + 7.0) * cos(a);
         double ly = RING_CY + (base + h + 7.0) * sin(a);
         cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
@@ -162,7 +168,7 @@ static void draw_dot(App *app, cairo_t *cr, int offset, double a, double fade) {
 
     gboolean hovered = app->has_hover && app->hover_offset == offset;
     unsigned int col;
-    double r = 3.0, glow = 0.0;
+    double r = 4.0, glow = 0.0;
     if (offset == 0) {
         col = app->settings.accent; r = 4.5; glow = 1.0;
     } else if (offset < 0) {
@@ -205,8 +211,8 @@ static void draw_dot(App *app, cairo_t *cr, int offset, double a, double fade) {
 
 void circle_draw(App *app, cairo_t *cr) {
     draw_ring(app, cr);
-    draw_portal(app, cr, portal_future_ang());
-    draw_portal(app, cr, portal_past_ang());
+    // draw_portal(app, cr, portal_future_ang());
+    // draw_portal(app, cr, portal_past_ang());
 
     for (int off = -CIRC_PAST - 1; off <= CIRC_FUTURE + 1; off++) {
         double a = dot_ang(off);

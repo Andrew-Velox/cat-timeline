@@ -32,6 +32,7 @@ sources = [
   'src/input.c',
   'src/settings.c',
   'src/settings_window.c',
+  'src/calwidget.c',
   'assets/cJSON.c',
 ]
 
