@@ -25,7 +25,7 @@ A cat runs along a glowing timeline that flows with the clock — your tasks rid
 </div>
 
 ---
-
+<!-- 
 ## 🎬 Demo
 
 A quick walkthrough of the widget and its settings:
@@ -36,7 +36,7 @@ A quick walkthrough of the widget and its settings:
 
 </div>
 
-> If the player doesn't load, **[watch / download the demo here](https://github.com/Andrew-Velox/cat-timeline/blob/main/docs/cat-timeline.mp4)**.
+> If the player doesn't load, **[watch / download the demo here](https://github.com/Andrew-Velox/cat-timeline/blob/main/docs/cat-timeline.mp4)**. -->
 
 ---
 
