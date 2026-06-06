@@ -369,7 +369,9 @@ static void on_swatch_clicked(GtkButton *b, gpointer ud) {
 static void on_reset(GtkButton *b, gpointer ud) {
     (void)b;
     Ctx *ctx = ud;
+    int layout = ctx->app->settings.layout;    /* keep the chosen shape */
     settings_defaults(&ctx->app->settings);
+    ctx->app->settings.layout = layout;        /* reset colours only */
     for (int i = 0; i < ctx->ncolors; i++)
         gtk_widget_queue_draw(ctx->cbtn[i]);   /* cbtn[i] is the swatch area */
     settings_save(&ctx->app->settings);
@@ -697,8 +699,8 @@ void settings_window_open(App *app) {
     add_color_row(ctx, grid, 3, "Upcoming days",    &s->future);
     add_color_row(ctx, grid, 4, "Past days",        &s->past);
     add_color_row(ctx, grid, 5, "Completed",        &s->done);
-    add_color_row(ctx, grid, 6, "Portals",          &s->portal);
-    ctx->ncolors = 7;
+    /* add_color_row(ctx, grid, 6, "Portals",       &s->portal); */
+    ctx->ncolors = 6;
 
     /* Shape chooser: line strip or circular ring. */
     GtkWidget *shape = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
