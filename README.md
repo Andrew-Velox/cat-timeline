@@ -6,9 +6,37 @@
 
 A cat runs along a glowing timeline that flows with the clock — your tasks ride above each day, and *today* is wherever the cat is standing.
 
-![cat-timeline](docs/image.png)
+<img src="docs/cat-timeline-full.gif" alt="cat-timeline in action" width="560">
+
+<br><br>
+
+<!-- two shapes, side by side -->
+<table>
+  <tr>
+    <td align="center"><b>Bar</b></td>
+    <td align="center"><b>Ring</b></td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle"><img src="docs/cat-timeline-line.gif" width="300"></td>
+    <td align="center" valign="middle"><img src="docs/cat-timeline-circle.gif" width="180"></td>
+  </tr>
+</table>
 
 </div>
+
+---
+
+## 🎬 Demo
+
+A quick walkthrough of the widget and its settings:
+
+<div align="center">
+
+https://github.com/Andrew-Velox/cat-timeline/raw/main/docs/cat-timeline.mp4
+
+</div>
+
+> If the player doesn't load, **[watch / download the demo here](docs/cat-timeline.mp4)**.
 
 ---
 
