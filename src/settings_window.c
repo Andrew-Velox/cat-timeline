@@ -411,16 +411,44 @@ static void place_near_widget(GtkWidget *win) {
     gtk_window_move(GTK_WINDOW(win), x, y);
 }
 
-/* A vertical icon-over-label widget for a left-rail notebook tab. */
+/* A vertical icon-over-label widget for a left-rail button. */
 static GtkWidget *nav_label(const char *icon, const char *text) {
     GtkWidget *b = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
-    GtkWidget *img = gtk_image_new_from_icon_name(icon, GTK_ICON_SIZE_BUTTON);
-    gtk_image_set_pixel_size(GTK_IMAGE(img), 20);
+    GtkWidget *img = gtk_image_new_from_icon_name(icon, GTK_ICON_SIZE_MENU);
+    gtk_image_set_pixel_size(GTK_IMAGE(img), 14);
     GtkWidget *lbl = gtk_label_new(text);
     gtk_box_pack_start(GTK_BOX(b), img, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(b), lbl, FALSE, FALSE, 0);
     gtk_widget_set_halign(b, GTK_ALIGN_CENTER);
     gtk_widget_show_all(b);
+    return b;
+}
+
+/* Switch the content stack to the page named on the toggled rail button. */
+static void on_nav_toggled(GtkToggleButton *b, gpointer ud) {
+    (void)ud;
+    if (!gtk_toggle_button_get_active(b))
+        return;
+    GtkWidget *stack = g_object_get_data(G_OBJECT(b), "stack");
+    const char *page = g_object_get_data(G_OBJECT(b), "page");
+    gtk_stack_set_visible_child_name(GTK_STACK(stack), page);
+}
+
+/* Add one rail button (radio-grouped, drawn as a pill) bound to a stack page. */
+static GtkWidget *add_nav(GtkWidget *rail, GtkWidget **group, GtkWidget *stack,
+                          const char *page, const char *icon, const char *text) {
+    GtkWidget *b = gtk_radio_button_new_from_widget(
+                       *group ? GTK_RADIO_BUTTON(*group) : NULL);
+    if (!*group)
+        *group = b;
+    gtk_toggle_button_set_mode(GTK_TOGGLE_BUTTON(b), FALSE);   /* no radio dot */
+    gtk_button_set_relief(GTK_BUTTON(b), GTK_RELIEF_NONE);
+    gtk_container_add(GTK_CONTAINER(b), nav_label(icon, text));
+    style_class(b, "nav-btn");
+    g_object_set_data(G_OBJECT(b), "stack", stack);
+    g_object_set_data_full(G_OBJECT(b), "page", g_strdup(page), g_free);
+    g_signal_connect(b, "toggled", G_CALLBACK(on_nav_toggled), NULL);
+    gtk_box_pack_start(GTK_BOX(rail), b, FALSE, FALSE, 0);
     return b;
 }
 
@@ -438,13 +466,15 @@ void settings_window_open(App *app) {
     /* Compact floating panel that hovers above other apps. The dialog/utility
      * hints + non-resizable keep tiling compositors (Hyprland) from tiling it. */
     gtk_window_set_decorated(GTK_WINDOW(win), FALSE);   /* own header instead */
+    /* Fixed size: tiling compositors (Hyprland) auto-float fixed-size windows
+     * but tile resizable ones fullscreen — so keep it non-resizable to float. */
     gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
     gtk_window_set_keep_above(GTK_WINDOW(win), TRUE);
     gtk_window_set_skip_taskbar_hint(GTK_WINDOW(win), TRUE);
     gtk_window_set_skip_pager_hint(GTK_WINDOW(win), TRUE);
     gtk_window_set_type_hint(GTK_WINDOW(win), GDK_WINDOW_TYPE_HINT_UTILITY);
     gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_NONE);
-    gtk_window_set_default_size(GTK_WINDOW(win), 480, 1);
+    gtk_window_set_default_size(GTK_WINDOW(win), 480, 440);
     g_signal_connect(win, "key-press-event", G_CALLBACK(on_key_press), NULL);
 
     Ctx *ctx = g_new0(Ctx, 1);
@@ -471,9 +501,17 @@ void settings_window_open(App *app) {
     gtk_box_pack_end(GTK_BOX(head), hclose, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), head, FALSE, FALSE, 0);
 
-    GtkWidget *tabs = gtk_notebook_new();
-    gtk_notebook_set_tab_pos(GTK_NOTEBOOK(tabs), GTK_POS_LEFT);
-    gtk_box_pack_start(GTK_BOX(root), tabs, TRUE, TRUE, 0);
+    /* Body: a vertically-centred left rail next to a content stack. */
+    GtkWidget *body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_box_pack_start(GTK_BOX(root), body, TRUE, TRUE, 0);
+
+    GtkWidget *rail = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    gtk_widget_set_valign(rail, GTK_ALIGN_CENTER);
+    GtkWidget *main_stack = gtk_stack_new();
+    gtk_stack_set_transition_type(GTK_STACK(main_stack),
+                                  GTK_STACK_TRANSITION_TYPE_CROSSFADE);
+    gtk_box_pack_start(GTK_BOX(body), rail, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(body), main_stack, TRUE, TRUE, 0);
 
     GtkWidget *page_home = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_container_set_border_width(GTK_CONTAINER(page_home), 8);
@@ -482,29 +520,35 @@ void settings_window_open(App *app) {
     GtkWidget *page_appearance = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_container_set_border_width(GTK_CONTAINER(page_appearance), 8);
 
-    /* Fixed-height viewports keep every page (and the window) a compact box;
-     * pages that need more room scroll internally instead of growing it. */
-    const int PAGE_H = 330;
+    /* Each page scrolls internally; a sensible minimum keeps the default size
+     * compact, while vexpand lets pages fill the window when it's enlarged. */
+    const int PAGE_H = 300;
     GtkWidget *tasks_vp = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(tasks_vp),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(tasks_vp), PAGE_H);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(tasks_vp), PAGE_H);
+    gtk_widget_set_vexpand(tasks_vp, TRUE);
     gtk_container_add(GTK_CONTAINER(tasks_vp), page_tasks);
 
     GtkWidget *appear_vp = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(appear_vp),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(appear_vp), PAGE_H);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(appear_vp), PAGE_H);
+    gtk_widget_set_vexpand(appear_vp, TRUE);
     gtk_container_add(GTK_CONTAINER(appear_vp), page_appearance);
 
-    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), page_home,
-                             nav_label("view-list-symbolic", "Home"));
-    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), tasks_vp,
-                             nav_label("x-office-calendar-symbolic", "Tasks"));
-    gtk_notebook_append_page(GTK_NOTEBOOK(tabs), appear_vp,
-                             nav_label("applications-graphics-symbolic", "Appearance"));
+    gtk_stack_add_named(GTK_STACK(main_stack), page_home, "home");
+    gtk_stack_add_named(GTK_STACK(main_stack), tasks_vp, "tasks");
+    gtk_stack_add_named(GTK_STACK(main_stack), appear_vp, "appearance");
+
+    GtkWidget *grp = NULL;
+    GtkWidget *nav_home = add_nav(rail, &grp, main_stack, "home",
+                                  "view-list-symbolic", "Home");
+    add_nav(rail, &grp, main_stack, "tasks", "x-office-calendar-symbolic", "Tasks");
+    add_nav(rail, &grp, main_stack, "appearance",
+            "applications-graphics-symbolic", "Appearance");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(nav_home), TRUE);
+    gtk_stack_set_visible_child_name(GTK_STACK(main_stack), "home");
 
     /* --- Home: Unfinished / Done tabs --- */
     GtkWidget *home_stack = gtk_stack_new();
@@ -514,16 +558,16 @@ void settings_window_open(App *app) {
     GtkWidget *uf_scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(uf_scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(uf_scroll), 292);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(uf_scroll), 292);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(uf_scroll), 260);
+    gtk_widget_set_vexpand(uf_scroll, TRUE);
     ctx->home_unfin = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_add(GTK_CONTAINER(uf_scroll), ctx->home_unfin);
 
     GtkWidget *dn_scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(dn_scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(dn_scroll), 292);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(dn_scroll), 292);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(dn_scroll), 260);
+    gtk_widget_set_vexpand(dn_scroll, TRUE);
     ctx->home_done = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_add(GTK_CONTAINER(dn_scroll), ctx->home_done);
 
