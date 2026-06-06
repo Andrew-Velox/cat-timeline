@@ -32,11 +32,11 @@ A quick walkthrough of the widget and its settings:
 
 <div align="center">
 
-https://github.com/Andrew-Velox/cat-timeline/raw/main/docs/cat-timeline.mp4
+<video src="https://github.com/Andrew-Velox/cat-timeline/raw/main/docs/cat-timeline.mp4" controls width="640"></video>
 
 </div>
 
-> If the player doesn't load, **[watch / download the demo here](docs/cat-timeline.mp4)**.
+> If the player doesn't load, **[watch / download the demo here](https://github.com/Andrew-Velox/cat-timeline/blob/main/docs/cat-timeline.mp4)**.
 
 ---
 
